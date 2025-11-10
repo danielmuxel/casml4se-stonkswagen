@@ -1,0 +1,42 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments and tooling
+.env
+.venv/
+#.python-version
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Dependency managers
+uv.lock
+poetry.lock
+Pipfile.lock
+
+# IDE and editor state
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Machine-learning artifacts
+mlruns/
+artifacts/
+checkpoints/
+
+# Data and model binaries (keep documentation)
+data/*
+!data/*.md
+!data/.gitkeep
+models/*
+!models/*.md
+!models/.gitkeep
+
+# Notebooks and reports outputs
+notebooks/.ipynb_checkpoints/
+
