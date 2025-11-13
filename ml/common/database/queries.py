@@ -8,11 +8,11 @@ allowing dependency injection in larger applications.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Iterable, Literal, Sequence
 
 import pandas as pd
-from sqlalchemy import bindparam, text
+from sqlalchemy import bindparam, text  # type: ignore[import]
 
 from .client import ConnectionInput, _ensure_client
 
@@ -69,12 +69,52 @@ def _build_time_filters(
     return clauses
 
 
+def _ensure_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _resolve_time_bounds(
+    *,
+    start_time: datetime | None,
+    end_time: datetime | None,
+    last_days: int | None,
+    last_hours: int | None,
+    last_minutes: int | None,
+) -> tuple[datetime | None, datetime | None]:
+    explicit_start = _ensure_utc(start_time)
+    explicit_end = _ensure_utc(end_time)
+
+    if explicit_start or explicit_end:
+        return explicit_start, explicit_end
+
+    params = {
+        "days": last_days or 0,
+        "hours": last_hours or 0,
+        "minutes": last_minutes or 0,
+    }
+    if sum(params.values()) <= 0:
+        return None, None
+
+    end_dt = datetime.now(UTC)
+    delta = timedelta(days=params["days"], hours=params["hours"], minutes=params["minutes"])
+    return end_dt - delta, end_dt
+
+
 def get_prices(
     connection: ConnectionInput,
     item_id: int,
+    *,
     start_time: datetime | None = None,
     end_time: datetime | None = None,
+    last_days: int | None = None,
+    last_hours: int | None = None,
+    last_minutes: int | None = None,
     limit: int | None = None,
+    order: Literal["ASC", "DESC"] = "ASC",
 ) -> pd.DataFrame:
     """
     Retrieve price rows for a single item id within an optional time range.
@@ -84,14 +124,21 @@ def get_prices(
 
     params: dict[str, object] = {"item_id": int(item_id)}
     clauses = ["item_id = :item_id"]
-    clauses.extend(_build_time_filters(params, "fetched_at", start_time, end_time, "native"))
+    resolved_start, resolved_end = _resolve_time_bounds(
+        start_time=start_time,
+        end_time=end_time,
+        last_days=last_days,
+        last_hours=last_hours,
+        last_minutes=last_minutes,
+    )
+    clauses.extend(_build_time_filters(params, "fetched_at", resolved_start, resolved_end, "native"))
 
     sql_lines = [
         "SELECT id, item_id, whitelisted, buy_quantity, buy_unit_price,",
         "       sell_quantity, sell_unit_price, fetched_at, created_at",
         "FROM prices",
         "WHERE " + " AND ".join(clauses),
-        "ORDER BY fetched_at ASC",
+        f"ORDER BY fetched_at {order}",
     ]
     if limit is not None:
         sql_lines.append("LIMIT :limit")
@@ -207,6 +254,9 @@ def get_generic_rows(
     item_id: int | None = None,
     start_time: datetime | None = None,
     end_time: datetime | None = None,
+    last_days: int | None = None,
+    last_hours: int | None = None,
+    last_minutes: int | None = None,
     time_column: str = "timestamp",
     limit: int | None = None,
     order: str = "ASC",
@@ -227,7 +277,14 @@ def get_generic_rows(
         clauses.append("item_id = :item_id")
         params["item_id"] = int(item_id)
 
-    clauses.extend(_build_time_filters(params, time_column, start_time, end_time, time_column_unit))
+    resolved_start, resolved_end = _resolve_time_bounds(
+        start_time=start_time,
+        end_time=end_time,
+        last_days=last_days,
+        last_hours=last_hours,
+        last_minutes=last_minutes,
+    )
+    clauses.extend(_build_time_filters(params, time_column, resolved_start, resolved_end, time_column_unit))
     if clauses:
         sql_lines.append("WHERE " + " AND ".join(clauses))
 
@@ -242,8 +299,13 @@ def get_generic_rows(
     with client.engine.begin() as conn:
         df = pd.read_sql(text("\n".join(sql_lines)), conn, params=params or None)
 
-    if time_column and time_column in df.columns and time_column_unit == "native":
-        df[time_column] = pd.to_datetime(df[time_column], errors="coerce", utc=True)
+    if time_column and time_column in df.columns:
+        if time_column_unit == "native":
+            df[time_column] = pd.to_datetime(df[time_column], errors="coerce", utc=True)
+        elif time_column_unit == "seconds":
+            df[time_column] = pd.to_datetime(df[time_column], unit="s", errors="coerce", utc=True)
+        elif time_column_unit == "milliseconds":
+            df[time_column] = pd.to_datetime(df[time_column], unit="ms", errors="coerce", utc=True)
         df = df[df[time_column].notna()]
 
     return df.reset_index(drop=True)
@@ -261,12 +323,78 @@ def list_columns(connection: ConnectionInput, table: str) -> list[str]:
         return list(result.keys())
 
 
+def get_bltc_history(
+    connection: ConnectionInput,
+    item_id: int,
+    *,
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
+    last_days: int | None = None,
+    last_hours: int | None = None,
+    last_minutes: int | None = None,
+    limit: int | None = None,
+    order: Literal["ASC", "DESC"] = "DESC",
+) -> pd.DataFrame:
+    """
+    Convenience wrapper for `gw2bltc_historical_prices`.
+    """
+
+    return get_generic_rows(
+        connection,
+        "gw2bltc_historical_prices",
+        item_id=item_id,
+        start_time=start_time,
+        end_time=end_time,
+        last_days=last_days,
+        last_hours=last_hours,
+        last_minutes=last_minutes,
+        limit=limit,
+        order=order,
+        time_column="timestamp",
+        time_column_unit="seconds",
+    )
+
+
+def get_tp_history(
+    connection: ConnectionInput,
+    item_id: int,
+    *,
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
+    last_days: int | None = None,
+    last_hours: int | None = None,
+    last_minutes: int | None = None,
+    limit: int | None = None,
+    order: Literal["ASC", "DESC"] = "DESC",
+) -> pd.DataFrame:
+    """
+    Convenience wrapper for `gw2tp_historical_prices`.
+    """
+
+    return get_generic_rows(
+        connection,
+        "gw2tp_historical_prices",
+        item_id=item_id,
+        start_time=start_time,
+        end_time=end_time,
+        last_days=last_days,
+        last_hours=last_hours,
+        last_minutes=last_minutes,
+        limit=limit,
+        order=order,
+        time_column="timestamp",
+        time_column_unit="milliseconds",
+    )
+
+
 __all__ = [
     "get_prices",
     "get_items",
     "get_item_count",
     "get_generic_rows",
     "list_columns",
+    "get_bltc_history",
+    "get_tp_history",
 ]
 
 

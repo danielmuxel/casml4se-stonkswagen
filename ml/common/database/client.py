@@ -8,6 +8,7 @@ place so the rest of the codebase can focus on query logic.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Optional
 
 import os
@@ -117,6 +118,11 @@ def _ensure_client(connection: "ConnectionInput") -> DatabaseClient:
 ConnectionInput = str | DatabaseClient
 
 
-__all__ = ["DatabaseClient", "ConnectionInput", "resolve_connection_url", "_ensure_client"]
+__all__ = [
+    "DatabaseClient",
+    "ConnectionInput",
+    "resolve_connection_url",
+    "_ensure_client",
+]
 
 

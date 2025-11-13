@@ -48,48 +48,107 @@ def test_fetch_and_export_real_tables() -> None:
     target_item_id = _resolve_item_id()
     output_dir = _ensure_output_dir()
 
-    end_time = datetime.now(UTC)
-    start_time = end_time - timedelta(days=int(os.getenv("TEST_DAYS_BACK", "7")))
+    days_back = int(os.getenv("TEST_DAYS_BACK", "7"))
+    limit = int(os.getenv("TEST_LIMIT", "500"))
+    history_limit = int(os.getenv("TEST_HISTORY_LIMIT", "5000"))
+    hours_back = int(os.getenv("TEST_HOURS_BACK", "24"))
+    now = datetime.now(UTC)
+    range_start = now - timedelta(days=days_back)
 
     prices_df = database.get_prices(
         client,
         item_id=target_item_id,
-        start_time=start_time,
-        end_time=end_time,
-        limit=int(os.getenv("TEST_LIMIT", "500")),
+        last_days=days_back,
+        limit=limit,
+        order="DESC",
     )
     if prices_df.empty:
         pytest.skip("No price data returned; adjust TEST_ITEM_ID/TEST_DAYS_BACK.")
     _write_csv(prices_df, output_dir / "prices.csv")
 
-    bltc_df = database.get_generic_rows(
+    prices_range_df = database.get_prices(
         client,
-        "gw2bltc_historical_prices",
         item_id=target_item_id,
-        start_time=start_time,
-        end_time=end_time,
-        time_column="timestamp",
-        time_column_unit="seconds",
-        limit=int(os.getenv("TEST_LIMIT", "5000")),
+        start_time=range_start,
+        end_time=now,
+        limit=limit,
+        order="DESC",
+    )
+    if not prices_range_df.empty:
+        _write_csv(prices_range_df, output_dir / "prices_range.csv")
+
+    prices_hours_df = database.get_prices(
+        client,
+        item_id=target_item_id,
+        last_hours=hours_back,
+        limit=limit,
+        order="DESC",
+    )
+    if not prices_hours_df.empty:
+        _write_csv(prices_hours_df, output_dir / "prices_last_hours.csv")
+
+    bltc_df = database.get_bltc_history(
+        client,
+        item_id=target_item_id,
+        last_days=days_back,
+        limit=history_limit,
         order="DESC",
     )
     if bltc_df.empty:
         pytest.skip("No gw2bltc historical data; adjust parameters.")
     _write_csv(bltc_df, output_dir / "gw2bltc_historical_prices.csv")
 
-    tp_df = database.get_generic_rows(
+    bltc_range_df = database.get_bltc_history(
         client,
-        "gw2tp_historical_prices",
         item_id=target_item_id,
-        start_time=start_time,
-        end_time=end_time,
-        time_column="timestamp",
-        time_column_unit="milliseconds",
-        limit=int(os.getenv("TEST_LIMIT", "5000")),
+        start_time=range_start,
+        end_time=now,
+        limit=history_limit,
+        order="DESC",
+    )
+    if not bltc_range_df.empty:
+        _write_csv(bltc_range_df, output_dir / "gw2bltc_historical_prices_range.csv")
+
+    bltc_hours_df = database.get_bltc_history(
+        client,
+        item_id=target_item_id,
+        last_hours=hours_back,
+        limit=history_limit,
+        order="DESC",
+    )
+    if not bltc_hours_df.empty:
+        _write_csv(bltc_hours_df, output_dir / "gw2bltc_historical_prices_last_hours.csv")
+
+    tp_df = database.get_tp_history(
+        client,
+        item_id=target_item_id,
+        last_days=days_back,
+        limit=history_limit,
         order="DESC",
     )
     if tp_df.empty:
         pytest.skip("No gw2tp historical data; adjust parameters.")
     _write_csv(tp_df, output_dir / "gw2tp_historical_prices.csv")
+
+    tp_range_df = database.get_tp_history(
+        client,
+        item_id=target_item_id,
+        start_time=range_start,
+        end_time=now,
+        limit=history_limit,
+        order="DESC",
+    )
+    if not tp_range_df.empty:
+        _write_csv(tp_range_df, output_dir / "gw2tp_historical_prices_range.csv")
+
+    tp_hours_df = database.get_tp_history(
+        client,
+        item_id=target_item_id,
+        last_hours=hours_back,
+        limit=history_limit,
+        order="DESC",
+    )
+    if not tp_hours_df.empty:
+        _write_csv(tp_hours_df, output_dir / "gw2tp_historical_prices_last_hours.csv")
 
 
