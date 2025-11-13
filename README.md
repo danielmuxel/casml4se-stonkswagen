@@ -36,3 +36,12 @@ The project uses [`uv`](https://docs.astral.sh/uv/) to manage Python dependencie
 
 > Tip: `scripts/init_ml_project.sh` shows an end-to-end example that installs ML dependencies, registers a Jupyter kernel, and verifies the setup with `uv`.
 
+
+## `initialize_all.sh`
+
+- Runs `uv sync` for every `pyproject.toml` discovered in the repository, keeping all Python projects aligned with their dependency manifests.
+- Usage:
+  ```
+  ./initialize_all.sh
+  ```
+
