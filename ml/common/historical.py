@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 import pandas as pd
 
-from .database import fetch_generic_df
+from .database import ConnectionInput, get_generic_rows
 
 __all__ = ["normalize_time_column", "fetch_historical_df"]
 
@@ -37,7 +37,7 @@ def normalize_time_column(
 
 
 def fetch_historical_df(
-    connection_url: str,
+    connection: ConnectionInput,
     table_name: str,
     item_id: int,
     time_col: str = "timestamp",
@@ -46,22 +46,30 @@ def fetch_historical_df(
     limit: int = 1000,
 ) -> tuple[pd.DataFrame, str]:
     """Fetch historical rows with consistent timestamp handling."""
-    where_sql = "item_id = :item_id"
-    params: dict[str, object] = {"item_id": int(item_id)}
+
     eff_limit = int(limit) if mode == "Max rows" else 10000
 
+    start_time: datetime | None = None
     if mode == "Days back" and days_back and days_back > 0:
-        start_time = datetime.utcnow() - timedelta(days=int(days_back))
-        if table_name == "gw2bltc_historical_prices" and time_col == "timestamp":
-            where_sql += " AND to_timestamp(timestamp) >= :start_time"
-        elif table_name == "gw2tp_historical_prices" and time_col == "timestamp":
-            where_sql += " AND to_timestamp(timestamp/1000.0) >= :start_time"
-        else:
-            where_sql += f" AND {time_col} >= :start_time"
-        params["start_time"] = start_time
+        start_time = datetime.now(UTC) - timedelta(days=int(days_back))
 
-    order = f"{time_col} DESC"
-    df = fetch_generic_df(connection_url, table_name, where_sql, params, order, eff_limit)
+    time_column_unit = "native"
+    if table_name == "gw2bltc_historical_prices" and time_col == "timestamp":
+        time_column_unit = "seconds"
+    elif table_name == "gw2tp_historical_prices" and time_col == "timestamp":
+        time_column_unit = "milliseconds"
+
+    df = get_generic_rows(
+        connection,
+        table_name,
+        item_id=int(item_id),
+        start_time=start_time,
+        time_column=time_col,
+        limit=eff_limit,
+        order="DESC",
+        time_column_unit=time_column_unit,
+    )
+
     df, visible_time_col = normalize_time_column(df, table_name, time_col)
     return df, visible_time_col
 

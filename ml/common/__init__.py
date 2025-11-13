@@ -1,13 +1,7 @@
-"""Shared utility helpers split by concern for the GW2 data analysis project."""
+"""Shared ML utilities grouped by concern for the Stonkswagen project."""
 
-from .database import (
-    resolve_connection_url,
-    fetch_prices_df,
-    fetch_items_df,
-    count_items,
-    fetch_generic_df,
-    list_columns,
-)
+from . import database
+from .database import DatabaseClient, ConnectionInput, resolve_connection_url
 from .historical import normalize_time_column, fetch_historical_df
 from .plotting import plot_prices, plot_quantity
 from .query_params import (
@@ -20,12 +14,10 @@ from .query_params import (
 )
 
 __all__ = [
+    "database",
+    "DatabaseClient",
+    "ConnectionInput",
     "resolve_connection_url",
-    "fetch_prices_df",
-    "fetch_items_df",
-    "count_items",
-    "fetch_generic_df",
-    "list_columns",
     "normalize_time_column",
     "fetch_historical_df",
     "plot_prices",
@@ -37,4 +29,5 @@ __all__ = [
     "remove_query_params",
     "apply_pending_query_params",
 ]
+
 
