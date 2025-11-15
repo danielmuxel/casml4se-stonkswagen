@@ -40,3 +40,4 @@ models/*
 # Notebooks and reports outputs
 notebooks/.ipynb_checkpoints/
 notebooks/data/*
+**.DS_Store
