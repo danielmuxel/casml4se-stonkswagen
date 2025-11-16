@@ -4,6 +4,7 @@ import os
 import time
 from pathlib import Path
 from datetime import datetime
+import hashlib
 
 # Configuration
 hetzner_endpoint = os.getenv('HETZNER_S3_ENDPOINT')
@@ -18,6 +19,14 @@ s3_client = boto3.client(
     aws_secret_access_key=secret_key,
     region_name='fsn1'  # or 'nbg1' depending on your region
 )
+
+def calculate_etag(file_path):
+    """Calculate ETag (MD5 hash) of a local file to match S3's ETag"""
+    hash_md5 = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 # Upload all files from the raw folder
 def upload_folder_to_s3(local_folder , s3_folder_prefix,  unix_timestamp, bucket_name="ost-s3"):
@@ -67,7 +76,7 @@ def upload_folder_to_s3(local_folder , s3_folder_prefix,  unix_timestamp, bucket
     print(f"{'=' * 50}")
 
 # Download all files from a folder in Hetzner Object Storage
-def download_folder_from_s3(s3_folder_prefix, local_folder, bucket_name="ost-s3"):
+def download_folder_from_s3(s3_folder_prefix, local_folder, bucket_name="ost-s3", skip_existing=True):
     """
     Download all files from a folder in Hetzner Object Storage to a local folder
 
@@ -75,6 +84,7 @@ def download_folder_from_s3(s3_folder_prefix, local_folder, bucket_name="ost-s3"
         s3_folder_prefix: The S3 folder path (e.g., 'datasources/gw2/raw/1762686861/')
         local_folder: Local directory to save files to
         bucket_name: S3 bucket name (default: 'ost-s3')
+        skip_existing: Skip files that already exist with matching ETag (default: True)
     """
     local_path = Path(local_folder)
 
@@ -86,6 +96,7 @@ def download_folder_from_s3(s3_folder_prefix, local_folder, bucket_name="ost-s3"
     print()
 
     downloaded = 0
+    skipped = 0
     failed = 0
 
     try:
@@ -114,6 +125,16 @@ def download_folder_from_s3(s3_folder_prefix, local_folder, bucket_name="ost-s3"
             filename = s3_key.split('/')[-1]
             local_file_path = local_path / filename
 
+            # Check if file exists and ETag matches
+            if skip_existing and local_file_path.exists():
+                s3_etag = obj['ETag'].strip('"')
+                local_etag = calculate_etag(local_file_path)
+
+                if local_etag == s3_etag:
+                    skipped += 1
+                    print(f"⊘ {filename} (already exists, ETag matches)")
+                    continue
+
             try:
                 # Download file
                 s3_client.download_file(
@@ -130,6 +151,7 @@ def download_folder_from_s3(s3_folder_prefix, local_folder, bucket_name="ost-s3"
         print(f"\n{'=' * 50}")
         print(f"Download Summary:")
         print(f"  Downloaded: {downloaded}/{len(files)}")
+        print(f"  Skipped: {skipped}/{len(files)}")
         print(f"  Failed: {failed}/{len(files)}")
         print(f"  Location: {local_folder}")
         print(f"  Source: {bucket_name}/{s3_folder_prefix}")
@@ -137,6 +159,7 @@ def download_folder_from_s3(s3_folder_prefix, local_folder, bucket_name="ost-s3"
 
     except Exception as e:
         print(f"Error listing objects: {str(e)}")
+
 
 # Example usage:
 # download_folder_from_s3(
