@@ -41,3 +41,6 @@ models/*
 notebooks/.ipynb_checkpoints/
 notebooks/data/*
 **.DS_Store
+/infra/MLFlow/minio-data/
+/infra/MLFlow/pgdata/
+
