@@ -116,27 +116,31 @@ def evaluate_model(model, train_series, test_series, forecast_horizon: int = 24)
         forecast_horizon: Number of steps to forecast
 
     Returns:
-        Dictionary with evaluation metrics
+        Dictionary with evaluation metrics and prediction (or None if error)
     """
-    # Fit the model
-    model.fit(train_series)
+    try:
+        # Fit the model
+        model.fit(train_series)
 
-    # Make prediction
-    prediction = model.predict(n=min(forecast_horizon, len(test_series)))
+        # Make prediction
+        prediction = model.predict(n=min(forecast_horizon, len(test_series)))
 
-    # Calculate metrics
-    metrics = {
-        'rmse': rmse(test_series, prediction),
-        'mae': mae(test_series, prediction),
-        'smape': smape(test_series, prediction)
-    }
-    # Only compute MAPE if all values are strictly positive
-    if (test_series.values() > 0).all():
-        metrics['mape'] = mape(test_series, prediction)
-    else:
-        metrics['mape'] = np.nan
+        # Calculate metrics
+        metrics = {
+            'rmse': rmse(test_series, prediction),
+            'mae': mae(test_series, prediction),
+            'smape': smape(test_series, prediction)
+        }
+        # Only compute MAPE if all values are strictly positive
+        if (test_series.values() > 0).all():
+            metrics['mape'] = mape(test_series, prediction)
+        else:
+            metrics['mape'] = np.nan
 
-    return metrics, prediction
+        return metrics, prediction
+    except Exception as e:
+        print(f"    Error in model evaluation: {e}")
+        return None, None
 
 
 def create_forecast_comparison_plot(train_series, test_series, prediction, model_name, item_name):
@@ -224,38 +228,6 @@ def create_residual_plot(test_series, prediction, model_name, item_name):
     plt.tight_layout()
     return fig
 
-def evaluate_model(model, train_series, test_series, forecast_horizon: int = 24):
-    """
-    Evaluate a single model on a train/test split
-
-    Args:
-        model: Darts forecasting model
-        train_series: Training TimeSeries
-        test_series: Test TimeSeries
-        forecast_horizon: Number of steps to forecast
-
-    Returns:
-        Dictionary with evaluation metrics
-    """
-    # Fit the model
-    model.fit(train_series)
-
-    # Make prediction
-    prediction = model.predict(n=min(forecast_horizon, len(test_series)))
-
-    # Calculate metrics
-    metrics = {
-        'rmse': rmse(test_series, prediction),
-        'mae': mae(test_series, prediction),
-        'smape': smape(test_series, prediction)
-    }
-    # Only compute MAPE if all values are strictly positive
-    if (test_series.values() > 0).all():
-        metrics['mape'] = mape(test_series, prediction)
-    else:
-        metrics['mape'] = np.nan
-
-    return metrics, prediction
 
 def evaluate_models_on_datasets(models: Dict, datasets: List[Dict], forecast_horizon: int = 24):
     """
@@ -288,8 +260,6 @@ def evaluate_models_on_datasets(models: Dict, datasets: List[Dict], forecast_hor
                     mlflow.log_param("item", item_name)
                     mlflow.log_param("forecast_horizon", forecast_horizon)
 
-
-
                     metrics, prediction = evaluate_model(
                         model,
                         train,
@@ -297,33 +267,66 @@ def evaluate_models_on_datasets(models: Dict, datasets: List[Dict], forecast_hor
                         forecast_horizon
                     )
 
+                    # Check if evaluation was successful
+                    if metrics is None or prediction is None:
+                        error_msg = "Model evaluation failed"
+                        mlflow.log_param("status", "failed")
+                        mlflow.log_param("error", error_msg)
+                        results.append({
+                            'item': item_name,
+                            'model': model_name,
+                            'rmse': np.nan,
+                            'mae': np.nan,
+                            'smape': np.nan,
+                            'mape': np.nan,
+                            'error': error_msg
+                        })
+                        continue
+
+                    mlflow.log_param("status", "success")
+
                     for metric_name, metric_value in metrics.items():
                         mlflow.log_metric(metric_name, metric_value)
 
                     # Log predictions as artifact
-                    prediction.to_csv(f"prediction_{item_name}.csv")
-                    mlflow.log_artifact(f"prediction_{item_name}.csv")
-                    os.remove(f"prediction_{item_name}.csv")  # Clean up local file
+                    try:
+                        prediction.to_csv(f"prediction_{item_name}.csv")
+                        mlflow.log_artifact(f"prediction_{item_name}.csv")
+                        os.remove(f"prediction_{item_name}.csv")  # Clean up local file
+                    except Exception as e:
+                        print(f"    Warning: Could not log prediction artifact: {e}")
+                        mlflow.log_param("prediction_artifact_error", str(e))
 
                     # Optionally log test data for reference
-                    test.to_csv(f"test_{item_name}.csv")
-                    mlflow.log_artifact(f"test_{item_name}.csv")
-                    os.remove(f"test_{item_name}.csv")  # Clean up local file
-
+                    try:
+                        test.to_csv(f"test_{item_name}.csv")
+                        mlflow.log_artifact(f"test_{item_name}.csv")
+                        os.remove(f"test_{item_name}.csv")  # Clean up local file
+                    except Exception as e:
+                        print(f"    Warning: Could not log test artifact: {e}")
+                        mlflow.log_param("test_artifact_error", str(e))
 
                     # Create and log forecast comparison plot
-                    forecast_fig = create_forecast_comparison_plot(
-                        train, test, prediction, model_name, item_name
-                    )
-                    mlflow.log_figure(forecast_fig, f"forecast_comparison_{item_name}.png")
-                    plt.close(forecast_fig)
+                    try:
+                        forecast_fig = create_forecast_comparison_plot(
+                            train, test, prediction, model_name, item_name
+                        )
+                        mlflow.log_figure(forecast_fig, f"forecast_comparison_{item_name}.png")
+                        plt.close(forecast_fig)
+                    except Exception as e:
+                        print(f"    Warning: Could not create/log forecast plot: {e}")
+                        mlflow.log_param("forecast_plot_error", str(e))
 
                     # Create and log residual plot
-                    residual_fig = create_residual_plot(
-                        test, prediction, model_name, item_name
-                    )
-                    mlflow.log_figure(residual_fig, f"residuals_{item_name}.png")
-                    plt.close(residual_fig)
+                    try:
+                        residual_fig = create_residual_plot(
+                            test, prediction, model_name, item_name
+                        )
+                        mlflow.log_figure(residual_fig, f"residuals_{item_name}.png")
+                        plt.close(residual_fig)
+                    except Exception as e:
+                        print(f"    Warning: Could not create/log residual plot: {e}")
+                        mlflow.log_param("residual_plot_error", str(e))
 
                     result = {
                         'item': item_name,
@@ -334,9 +337,24 @@ def evaluate_models_on_datasets(models: Dict, datasets: List[Dict], forecast_hor
 
             except Exception as e:
                 print(f"    Error: {e}")
+                # Log error to MLflow
+                try:
+                    with mlflow.start_run(run_name=f"{model_name}_{item_name}_ERROR", nested=True):
+                        mlflow.log_param("model_name", model_name)
+                        mlflow.log_param("item", item_name)
+                        mlflow.log_param("status", "error")
+                        mlflow.log_param("error_type", type(e).__name__)
+                        mlflow.log_param("error_message", str(e))
+                except Exception as mlflow_error:
+                    print(f"    Could not log error to MLflow: {mlflow_error}")
+
                 results.append({
                     'item': item_name,
                     'model': model_name,
+                    'rmse': np.nan,
+                    'mae': np.nan,
+                    'smape': np.nan,
+                    'mape': np.nan,
                     'error': str(e)
                 })
 
@@ -351,28 +369,47 @@ def print_comparison_summary(results_df: pd.DataFrame):
     print("EVALUATION SUMMARY")
     print("=" * 80)
 
+    # Check for errors
+    if 'error' in results_df.columns:
+        error_count = results_df['error'].notna().sum()
+        if error_count > 0:
+            print(f"\n⚠️  {error_count} model evaluation(s) failed")
+            print("\nFailed evaluations:")
+            failed = results_df[results_df['error'].notna()][['item', 'model', 'error']]
+            print(failed.to_string())
+            print("\n" + "-" * 80)
+
+    # Filter out failed runs for metrics calculations
+    successful_results = results_df[results_df['error'].isna()] if 'error' in results_df.columns else results_df
+
+    if len(successful_results) == 0:
+        print("\n❌ No successful model evaluations to summarize")
+        return
+
     # Average performance by model
     print("\nAverage Performance by Model:")
-    avg_by_model = results_df.groupby('model')[['mape', 'rmse', 'mae', 'smape']].mean()
+    avg_by_model = successful_results.groupby('model')[['mape', 'rmse', 'mae', 'smape']].mean()
     print(avg_by_model.to_string())
 
     # Best model per metric
     print("\nBest Model per Metric:")
     for metric in ['mape', 'rmse', 'mae', 'smape']:
-        if metric in results_df.columns:
-            best_idx = results_df[metric].idxmin()
-            best_model = results_df.loc[best_idx, 'model']
-            best_value = results_df.loc[best_idx, metric]
-            print(f"  {metric.upper()}: {best_model} ({best_value:.4f})")
+        if metric in successful_results.columns:
+            valid_metric = successful_results[successful_results[metric].notna()]
+            if len(valid_metric) > 0:
+                best_idx = valid_metric[metric].idxmin()
+                best_model = valid_metric.loc[best_idx, 'model']
+                best_value = valid_metric.loc[best_idx, metric]
+                print(f"  {metric.upper()}: {best_model} ({best_value:.4f})")
 
     # Performance by dataset type
-    results_df['dataset_type'] = results_df['item'].apply(
+    successful_results['dataset_type'] = successful_results['item'].apply(
         lambda x: 'crypto' if 'crypto' in x.lower() or any(
             crypto in x.lower() for crypto in ['btc', 'eth', 'usdt']) else 'gw2'
     )
 
     print("\nAverage Performance by Dataset Type:")
-    avg_by_type = results_df.groupby(['dataset_type', 'model'])[['mape', 'rmse', 'mae', 'smape']].mean()
+    avg_by_type = successful_results.groupby(['dataset_type', 'model'])[['mape', 'rmse', 'mae', 'smape']].mean()
     print(avg_by_type.to_string())
 
 
