@@ -6,9 +6,11 @@ import pandas as pd
 import requests
 import sqlalchemy
 from sqlalchemy import create_engine, text
+from massive import RESTClient
+
 
 class DataRetriever:
-    """Simple data retriever for crypto data"""
+    """Simple data retriever for crypto and stock data"""
 
     def __init__(self, data_folder: str = "../data/cache/"):
         # Ensure a stable, absolute data path regardless of current working directory
@@ -38,6 +40,19 @@ class DataRetriever:
             "1d": "1d",
             "1w": "1w",
         }
+
+        # Map intervals to Polygon.io format
+        self.massive_intervals = {
+            "1m": ("minute", 1),
+            "5m": ("minute", 5),
+            "15m": ("minute", 15),
+            "30m": ("minute", 30),
+            "1h": ("hour", 1),
+            "4h": ("hour", 4),
+            "1d": ("day", 1),
+            "1w": ("week", 1),
+        }
+
         # Database connection string for PostgreSQL
         # Format: postgresql://username:password@host:port/database
         db_user = os.getenv("DB_USER")
@@ -50,13 +65,20 @@ class DataRetriever:
             db_connection_string = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
         else:
             db_connection_string = None
-            raise ValueError # TODO throw error message
+            raise ValueError  # TODO throw error message
 
         self.db_connection_string = db_connection_string
         if self.db_connection_string:
             self.db_engine = create_engine(self.db_connection_string)
         else:
             self.db_engine = None
+
+        # Initialize Polygon.io client
+        massive_api_key = os.getenv("MASSIVECOM_API_KEY")
+        if massive_api_key:
+            self.massive_client = RESTClient(api_key=massive_api_key)
+        else:
+            self.massive_client = None
 
     def get_data(
             self,
@@ -69,31 +91,32 @@ class DataRetriever:
             use_cache: bool = True,
     ) -> pd.DataFrame:
         """
-        Get crypto data
+        Get financial data
 
         Args:
-            symbol: e.g., "BTC/USDT" for Binance or item_id for DAMU
-            source: "BINANCE" or "DAMU"
+            symbol: e.g., "BTC/USDT" for Binance, item_id for DAMU, or "AAPL" for stocks
+            source: "BINANCE", "DAMU", or "STOCKS"
             start_time: datetime object
             end_time: datetime object
-            interval: "1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w" (only for BINANCE)
+            interval: "1m", "5m", "15m", "30m", "1h", "1d", "1w" (for BINANCE and STOCKS)
             save_csv: automatically save to CSV
+            use_cache: use cached data if available
 
         Returns:
-            DataFrame with columns: timestamp, open, high, low, close, volume (for BINANCE)
+            DataFrame with columns: timestamp, open, high, low, close, volume (for BINANCE and STOCKS)
             or price data columns (for DAMU)
         """
 
         source_upper = source.upper()
-        if source_upper not in ["BINANCE", "DAMU"]:
-            raise ValueError("Only BINANCE and DAMU sources supported")
+        if source_upper not in ["BINANCE", "DAMU", "STOCKS"]:
+            raise ValueError("Only BINANCE, DAMU, and STOCKS sources supported")
 
-        if source_upper == "BINANCE" and interval not in self.intervals:
+        if source_upper in ["BINANCE", "STOCKS"] and interval not in self.intervals:
             raise ValueError(f"Interval must be one of: {list(self.intervals.keys())}")
 
-        print(f"Fetching {symbol} from {source} ({interval if source_upper == 'BINANCE' else 'raw'})...")
+        print(f"Fetching {symbol} from {source} ({interval if source_upper in ['BINANCE', 'STOCKS'] else 'raw'})...")
         # Generate filename
-        filename = f"{symbol.replace('/', '_')}_{interval if source_upper == 'BINANCE' else 'raw'}_{
+        filename = f"{symbol.replace('/', '_')}_{interval if source_upper in ['BINANCE', 'STOCKS'] else 'raw'}_{
         start_time.strftime('%Y%m%d')
         }_{end_time.strftime('%Y%m%d')}.csv"
         filepath = os.path.join(self.data_folder, filename)
@@ -103,7 +126,7 @@ class DataRetriever:
             print(f"Loading from cache: {filename}")
             df = pd.read_csv(filepath)
             # Convert timestamp columns based on source
-            if source_upper == "BINANCE":
+            if source_upper in ["BINANCE", "STOCKS"]:
                 df["timestamp"] = pd.to_datetime(df["timestamp"])
             elif source_upper == "DAMU":
                 if 'fetched_at' in df.columns:
@@ -122,6 +145,8 @@ class DataRetriever:
             df = self._fetch_damu_price(symbol, start_time, end_time)
             if 'fetched_at' in df.columns and 'timestamp' not in df.columns:
                 df['timestamp'] = df['fetched_at']
+        elif source_upper == "STOCKS":
+            df = self._fetch_stock_data(symbol, start_time, end_time, interval)
 
         # Save to CSV
         if save_csv:
@@ -164,7 +189,7 @@ class DataRetriever:
                             sell_unit_price,
                             fetched_at,
                             created_at
-                     FROM public.prices
+                     FROM prices
                      WHERE item_id = :item_id
                        AND fetched_at >= :start_time
                        AND fetched_at <= :end_time
@@ -194,9 +219,76 @@ class DataRetriever:
         return df
 
 
+    def _fetch_stock_data(
+            self, symbol: str, start_time: datetime, end_time: datetime, interval: str
+    ) -> pd.DataFrame:
+        """
+        Fetch stock data from Polygon.io
+
+        Args:
+            symbol: Stock ticker symbol (e.g., "AAPL", "MSFT", "SPY")
+            start_time: start datetime
+            end_time: end datetime
+            interval: bar size interval
+
+        Returns:
+            DataFrame with columns: timestamp, open, high, low, close, volume
+        """
+        if self.massive_client is None:
+            raise ValueError("Polygon.io API key not configured. Set POLYGON_API_KEY environment variable")
+
+        try:
+            # Get massive interval
+            massive_interval = self.massive_intervals.get(interval)
+            if not massive_interval:
+                raise ValueError(f"Invalid interval for Polygon.io: {interval}")
+
+            timespan, multiplier = massive_interval
+
+            # Format dates as YYYY-MM-DD
+            start_date = start_time.strftime('%Y-%m-%d')
+            end_date = end_time.strftime('%Y-%m-%d')
+
+            # Fetch aggregates (bars) from Polygon.io
+            aggs = []
+            for agg in self.massive_client.list_aggs(
+                ticker=symbol,
+                multiplier=multiplier,
+                timespan=timespan,
+                from_=start_date,
+                to=end_date,
+                #limit=50000
+            ):
+                aggs.append(agg)
+
+            if not aggs:
+                print(f"No data retrieved for {symbol}")
+                return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+            # Convert to DataFrame
+            df = pd.DataFrame([{
+                'timestamp': pd.to_datetime(agg.timestamp, unit='ms'),
+                'open': agg.open,
+                'high': agg.high,
+                'low': agg.low,
+                'close': agg.close,
+                'volume': agg.volume
+            } for agg in aggs])
+
+            # Ensure timestamp is timezone-naive for consistency
+            if df['timestamp'].dt.tz is not None:
+                df['timestamp'] = df['timestamp'].dt.tz_localize(None)
+
+            print(f"Fetched {len(df)} bars for {symbol} from Polygon.io")
+
+            return df
+
+        except Exception as e:
+            print(f"Error fetching data from Polygon.io: {e}")
+            raise
 
     def _fetch_binance_data(
-        self, symbol: str, start_time: datetime, end_time: datetime, interval: str
+            self, symbol: str, start_time: datetime, end_time: datetime, interval: str
     ) -> pd.DataFrame:
         """Fetch data from Binance API"""
 
