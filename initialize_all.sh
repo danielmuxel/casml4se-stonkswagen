@@ -16,17 +16,19 @@ while IFS= read -r -d '' pyproject_file; do
   project_dir="$(dirname "$pyproject_file")"
 
   already_added=false
-  for existing_dir in "${project_paths[@]}"; do
-    if [ "$existing_dir" = "$project_dir" ]; then
-      already_added=true
-      break
-    fi
-  done
+  if [ ${#project_paths[@]} -gt 0 ]; then
+    for existing_dir in "${project_paths[@]}"; do
+      if [ "$existing_dir" = "$project_dir" ]; then
+        already_added=true
+        break
+      fi
+    done
+  fi
 
   if [ "$already_added" = false ]; then
     project_paths+=("$project_dir")
   fi
-done < <(find "$repo_root" -type f -name "pyproject.toml" -print0)
+done < <(find "$repo_root" -not -path '*/.*' -type f -name "pyproject.toml" -print0)
 
 if [ ${#project_paths[@]} -eq 0 ]; then
   echo "No pyproject.toml files found under $repo_root. Nothing to synchronize."
@@ -39,6 +41,10 @@ for project_dir in "${project_paths[@]}"; do
   echo "-------------------------------------------------------------------"
   (
     cd "$project_dir"
+    if [ -d ".venv" ]; then
+      echo "Removing existing .venv in $project_dir..."
+      rm -rf .venv
+    fi
     uv sync
   )
   echo "Completed uv sync for: $project_dir"
