@@ -38,13 +38,14 @@ if torch.cuda.is_available():
         print(f"Error: {e}")
 
 
-datapath = "../../data/evaluations/"
+# Load environment variables
+load_dotenv()
 
 # Download source data from s3
 from ml.common.folder_s3_sync import download_folder_from_s3
 
-# Load environment variables
-load_dotenv()
+# Get data path from environment variable
+datapath = os.path.join(os.getenv('DATA_PATH'), 'evaluations')
 
 
 #download_folder_from_s3(s3_folder_prefix='datasources/gw2/raw/1763495310', local_folder=f"{datapath}/gw2/")

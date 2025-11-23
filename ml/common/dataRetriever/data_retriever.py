@@ -7,23 +7,38 @@ import requests
 import sqlalchemy
 from sqlalchemy import create_engine, text
 from massive import RESTClient
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 
 class DataRetriever:
     """Simple data retriever for crypto and stock data"""
 
-    def __init__(self, data_folder: str = "../data/cache/"):
-        # Ensure a stable, absolute data path regardless of current working directory
-        # Resolve relative paths against the project root (repo root = two levels up from src)
-        this_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.abspath(os.path.join(this_dir, "..", ".."))
-
+    def __init__(self, data_folder: str = None):
+        # Get data path from environment variable, with fallback
+        base_data_path = os.getenv('DATA_PATH')
+        
         if data_folder is None:
-            resolved_folder = os.path.join(project_root, "data")
+            # Default to cache subdirectory in DATA_PATH
+            if base_data_path:
+                resolved_folder = os.path.join(base_data_path, 'cache')
+            else:
+                # Fallback to old behavior if DATA_PATH not set
+                this_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.abspath(os.path.join(this_dir, "..", ".."))
+                resolved_folder = os.path.join(project_root, "data", "cache")
         elif os.path.isabs(data_folder):
             resolved_folder = data_folder
         else:
-            resolved_folder = os.path.join(project_root, data_folder)
+            # Relative path: join with DATA_PATH if available, otherwise use project root
+            if base_data_path:
+                resolved_folder = os.path.join(base_data_path, data_folder)
+            else:
+                this_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.abspath(os.path.join(this_dir, "..", ".."))
+                resolved_folder = os.path.join(project_root, data_folder)
 
         self.data_folder = os.path.normpath(resolved_folder)
         os.makedirs(self.data_folder, exist_ok=True)
