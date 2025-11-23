@@ -5,6 +5,7 @@ Based on: "Financial Time Series Data Processing for Machine Learning" by Fabric
 Usage:
     python bitcoin_ml_pipeline.py --data_path btc_5min.csv --epochs 100
 """
+import time
 
 import numpy as np
 import pandas as pd
@@ -57,10 +58,10 @@ def load_and_validate_data(file_path: str) -> pd.DataFrame:
     print(f"Data loaded: {len(df)} rows from {df['timestamp'].min()} to {df['timestamp'].max()}")
 
     # Log data info to MLflow
-    # mlflow.log_param("data_rows", len(df))
-    # mlflow.log_param("data_start", str(df['timestamp'].min()))
-    # mlflow.log_param("data_end", str(df['timestamp'].max()))
-    # mlflow.log_param("data_timespan_days", (df['timestamp'].max() - df['timestamp'].min()).days)
+    mlflow.log_param("data_rows", len(df))
+    mlflow.log_param("data_start", str(df['timestamp'].min()))
+    mlflow.log_param("data_end", str(df['timestamp'].max()))
+    mlflow.log_param("data_timespan_days", (df['timestamp'].max() - df['timestamp'].min()).days)
 
     return df
 
@@ -95,7 +96,7 @@ def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df = df.dropna().reset_index(drop=True)
 
     print(f"Technical indicators added. Rows after dropna: {len(df)}")
-    # mlflow.log_param("data_rows_after_indicators", len(df))
+    mlflow.log_param("data_rows_after_indicators", len(df))
 
     return df
 
@@ -149,15 +150,15 @@ def chronological_split(df: pd.DataFrame, train_ratio: float = 0.70,
     print(f"  Test:  {len(df_test)} rows ({df_test['timestamp'].min()} to {df_test['timestamp'].max()})")
 
     # Log split info to MLflow
-    # mlflow.log_param("train_rows", len(df_train))
-    # mlflow.log_param("val_rows", len(df_val))
-    # mlflow.log_param("test_rows", len(df_test))
-    # mlflow.log_param("train_start", str(df_train['timestamp'].min()))
-    # mlflow.log_param("train_end", str(df_train['timestamp'].max()))
-    # mlflow.log_param("val_start", str(df_val['timestamp'].min()))
-    # mlflow.log_param("val_end", str(df_val['timestamp'].max()))
-    # mlflow.log_param("test_start", str(df_test['timestamp'].min()))
-    # mlflow.log_param("test_end", str(df_test['timestamp'].max()))
+    mlflow.log_param("train_rows", len(df_train))
+    mlflow.log_param("val_rows", len(df_val))
+    mlflow.log_param("test_rows", len(df_test))
+    mlflow.log_param("train_start", str(df_train['timestamp'].min()))
+    mlflow.log_param("train_end", str(df_train['timestamp'].max()))
+    mlflow.log_param("val_start", str(df_val['timestamp'].min()))
+    mlflow.log_param("val_end", str(df_val['timestamp'].max()))
+    mlflow.log_param("test_start", str(df_test['timestamp'].min()))
+    mlflow.log_param("test_end", str(df_test['timestamp'].max()))
 
     return df_train, df_val, df_test
 
@@ -321,8 +322,8 @@ def balance_training_data(slices: List, labels: List, metadata: List,
     print(f"\nOriginal class distribution:")
     for cls, count in zip(unique, counts):
         print(f"  Class {cls}: {count} ({count / len(labels) * 100:.1f}%)")
-        # mlflow.log_metric(f"train_class_{cls}_original_count", count)
-        # mlflow.log_metric(f"train_class_{cls}_original_pct", count / len(labels) * 100)
+        mlflow.log_metric(f"train_class_{cls}_original_count", count)
+        mlflow.log_metric(f"train_class_{cls}_original_pct", count / len(labels) * 100)
 
     # Find minority class count
     min_count = counts.min()
@@ -351,8 +352,8 @@ def balance_training_data(slices: List, labels: List, metadata: List,
     print(f"\nBalanced class distribution:")
     for cls, count in zip(unique, counts):
         print(f"  Class {cls}: {count} ({count / len(balanced_labels) * 100:.1f}%)")
-        # mlflow.log_metric(f"train_class_{cls}_balanced_count", count)
-        # mlflow.log_metric(f"train_class_{cls}_balanced_pct", count / len(balanced_labels) * 100)
+        mlflow.log_metric(f"train_class_{cls}_balanced_count", count)
+        mlflow.log_metric(f"train_class_{cls}_balanced_pct", count / len(balanced_labels) * 100)
 
     return balanced_slices, balanced_labels, balanced_metadata
 
@@ -448,9 +449,9 @@ class TimeSeriesDataModule(pl.LightningDataModule):
         print(f"  Test:  {len(self.test_dataset)}")
 
         # Log to MLflow
-        # mlflow.log_metric("train_slices", len(self.train_dataset))
-        # mlflow.log_metric("val_slices", len(self.val_dataset))
-        # mlflow.log_metric("test_slices", len(self.test_dataset))
+        mlflow.log_metric("train_slices", len(self.train_dataset))
+        mlflow.log_metric("val_slices", len(self.val_dataset))
+        mlflow.log_metric("test_slices", len(self.test_dataset))
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset, batch_size=self.batch_size,
@@ -585,9 +586,9 @@ def main():
         description='Bitcoin Time Series ML Pipeline with MLflow logging',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument('--data_path', type=str, default="/home/lukas/Documents/Github/casml4se-stonkswagen/data/crypto/bitcoin_tiny.csv",
+    parser.add_argument('--data_path', type=str, default=os.path.join(os.getenv('DATA_PATH'), 'crypto', 'bitcoin.csv'),
                         help='Path to CSV file with columns: timestamp,open,high,low,close,volume')
-    parser.add_argument('--experiment_name', type=str, default='bitcoin_timeseries',
+    parser.add_argument('--experiment_name', type=str, default='bitcoin_timeseries2',
                         help='MLflow experiment name')
     parser.add_argument('--run_name', type=str, default=None,
                         help='MLflow run name (optional)')
@@ -597,15 +598,15 @@ def main():
                         help='Prediction horizon (bars ahead to predict)')
     parser.add_argument('--hidden_size', type=int, default=64,
                         help='LSTM hidden size')
-    parser.add_argument('--dropout', type=float, default=0.0,
+    parser.add_argument('--dropout', type=float, default=0.2,
                         help='Dropout rate')
     parser.add_argument('--batch_size', type=int, default=64,
                         help='Batch size')
-    parser.add_argument('--epochs', type=int, default=100,
+    parser.add_argument('--epochs', type=int, default=250,
                         help='Maximum number of epochs')
     parser.add_argument('--learning_rate', type=float, default=0.001,
                         help='Learning rate')
-    parser.add_argument('--num_workers', type=int, default=4,
+    parser.add_argument('--num_workers', type=int, default=40,
                         help='Number of dataloader workers')
     parser.add_argument('--seed', type=int, default=42,
                         help='Random seed')
@@ -625,6 +626,31 @@ def main():
 
     # Set MLflow experiment
     mlflow.set_experiment(args.experiment_name)
+
+
+
+    # ========================================================================
+    # START MLFLOW RUN (AFTER preprocessing is done)
+    # ========================================================================
+    # Setup MLflow logger for PyTorch Lightning
+
+    if mlflow.active_run():
+        print("\nWarning: Found active MLflow run. Ending it before starting new run...")
+        mlflow.end_run()
+    mlflow.start_run(run_name=args.run_name)
+
+    start_time = time.time()
+    mlflow.log_metric("start_timestamp", start_time)
+
+    mlflow.pytorch.autolog()
+    mlflow_logger = MLFlowLogger(
+        experiment_name=mlflow.get_experiment(mlflow.active_run().info.experiment_id).name,
+        tracking_uri=mlflow.get_tracking_uri(),
+        run_id=mlflow.active_run().info.run_id,
+    )
+
+    print(f"\nMLflow Run ID: {mlflow_logger.run_id}")
+    print(f"MLflow Run Name: {args.run_name}")
 
     print("\n" + "=" * 80)
     print("Starting data preprocessing...")
@@ -647,171 +673,158 @@ def main():
     print("Preprocessing completed!")
     print("=" * 80)
 
-    # ========================================================================
-    # START MLFLOW RUN (AFTER preprocessing is done)
-    # ========================================================================
-    if mlflow.active_run():
-        print("\nWarning: Found active MLflow run. Ending it before starting new run...")
-        mlflow.end_run()
-    with mlflow.start_run(run_name=args.run_name) as run:
-        print(f"\nMLflow Run ID: {run.info.run_id}")
-        print(f"MLflow Run Name: {run.info.run_name}")
 
-        # Log all hyperparameters
-        mlflow.log_param("data_path", args.data_path)
-        mlflow.log_param("lookback", args.lookback)
-        mlflow.log_param("horizon", args.horizon)
-        mlflow.log_param("hidden_size", args.hidden_size)
-        mlflow.log_param("dropout", args.dropout)
-        mlflow.log_param("batch_size", args.batch_size)
-        mlflow.log_param("max_epochs", args.epochs)
-        mlflow.log_param("learning_rate", args.learning_rate)
-        mlflow.log_param("seed", args.seed)
-        mlflow.log_param("num_workers", args.num_workers)
 
-        # Log paper methodology
-        mlflow.log_param("scaling_method", "standardization")
-        mlflow.log_param("scaling_strategy", "per_slice_independent")
-        mlflow.log_param("split_method", "chronological")
-        mlflow.log_param("label_type", "qclass")
-        mlflow.log_param("class_balancing", "undersampling")
+    # Log all hyperparameters
+    mlflow.log_param("data_path", args.data_path)
+    mlflow.log_param("lookback", args.lookback)
+    mlflow.log_param("horizon", args.horizon)
+    mlflow.log_param("hidden_size", args.hidden_size)
+    mlflow.log_param("dropout", args.dropout)
+    mlflow.log_param("batch_size", args.batch_size)
+    mlflow.log_param("max_epochs", args.epochs)
+    mlflow.log_param("learning_rate", args.learning_rate)
+    mlflow.log_param("seed", args.seed)
+    mlflow.log_param("num_workers", args.num_workers)
 
-        # Log feature information
-        mlflow.log_param("n_features", data_module.n_features)
-        mlflow.log_param("feature_groups", str(list(data_module.feature_groups.keys())))
-        mlflow.log_param("price_overlay_features", len(data_module.feature_groups['price_overlay']))
-        mlflow.log_param("volume_features", len(data_module.feature_groups['volume']))
-        mlflow.log_param("bounded_features", len(data_module.feature_groups['bounded']))
-        mlflow.log_param("unbounded_features", len(data_module.feature_groups['unbounded']))
+    # Log paper methodology
+    mlflow.log_param("scaling_method", "standardization")
+    mlflow.log_param("scaling_strategy", "per_slice_independent")
+    mlflow.log_param("split_method", "chronological")
+    mlflow.log_param("label_type", "qclass")
+    mlflow.log_param("class_balancing", "undersampling")
 
-        # Log dataset sizes (these were printed during preprocessing)
-        mlflow.log_metric("train_slices", len(data_module.train_dataset))
-        mlflow.log_metric("val_slices", len(data_module.val_dataset))
-        mlflow.log_metric("test_slices", len(data_module.test_dataset))
+    # Log feature information
+    mlflow.log_param("n_features", data_module.n_features)
+    mlflow.log_param("feature_groups", str(list(data_module.feature_groups.keys())))
+    mlflow.log_param("price_overlay_features", len(data_module.feature_groups['price_overlay']))
+    mlflow.log_param("volume_features", len(data_module.feature_groups['volume']))
+    mlflow.log_param("bounded_features", len(data_module.feature_groups['bounded']))
+    mlflow.log_param("unbounded_features", len(data_module.feature_groups['unbounded']))
 
-        # Initialize model
-        model = SimpleLSTMClassifier(
-            n_features=data_module.n_features,
-            hidden_size=args.hidden_size,
-            num_classes=3,  # QClass: Up, Neutral, Down
-            learning_rate=args.learning_rate,
-            dropout=args.dropout
-        )
+    # Log dataset sizes (these were printed during preprocessing)
+    mlflow.log_metric("train_slices", len(data_module.train_dataset))
+    mlflow.log_metric("val_slices", len(data_module.val_dataset))
+    mlflow.log_metric("test_slices", len(data_module.test_dataset))
 
-        total_params = sum(p.numel() for p in model.parameters())
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    # Initialize model
+    model = SimpleLSTMClassifier(
+        n_features=data_module.n_features,
+        hidden_size=args.hidden_size,
+        num_classes=3,  # QClass: Up, Neutral, Down
+        learning_rate=args.learning_rate,
+        dropout=args.dropout
+    )
 
-        print(f"\nModel architecture:")
-        print(f"  Input features: {data_module.n_features}")
-        print(f"  LSTM hidden size: {args.hidden_size}")
-        print(f"  Output classes: 3 (Up/Neutral/Down)")
-        print(f"  Total parameters: {total_params:,}")
-        print(f"  Trainable parameters: {trainable_params:,}")
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-        # Log model info
-        mlflow.log_param("model_type", "LSTM")
-        mlflow.log_param("num_classes", 3)
-        mlflow.log_param("total_parameters", total_params)
-        mlflow.log_param("trainable_parameters", trainable_params)
+    print(f"\nModel architecture:")
+    print(f"  Input features: {data_module.n_features}")
+    print(f"  LSTM hidden size: {args.hidden_size}")
+    print(f"  Output classes: 3 (Up/Neutral/Down)")
+    print(f"  Total parameters: {total_params:,}")
+    print(f"  Trainable parameters: {trainable_params:,}")
 
-        # Setup MLflow logger for PyTorch Lightning
-        mlflow_logger = MLFlowLogger(
-            experiment_name=args.experiment_name,
-            run_id=run.info.run_id,
-            log_model=True
-        )
+    # Log model info
+    mlflow.log_param("model_type", "LSTM")
+    mlflow.log_param("num_classes", 3)
+    mlflow.log_param("total_parameters", total_params)
+    mlflow.log_param("trainable_parameters", trainable_params)
 
-        # Callbacks
-        checkpoint_callback = ModelCheckpoint(
-            monitor='val_loss',
-            dirpath='checkpoints',
-            filename='bitcoin-lstm-{epoch:02d}-{val_loss:.4f}',
-            save_top_k=3,
-            mode='min',
-            save_last=True
-        )
 
-        early_stop_callback = EarlyStopping(
-            monitor='val_loss',
-            patience=10,
-            mode='min',
-            verbose=True
-        )
 
-        # Trainer
-        trainer = pl.Trainer(
-            max_epochs=args.epochs,
-            callbacks=[checkpoint_callback, early_stop_callback],
-            # logger=mlflow_logger,
-            accelerator='auto',
-            devices=1,
-            log_every_n_steps=10,
-            deterministic=True,
-            enable_progress_bar=True
-        )
+    # Callbacks
+    checkpoint_callback = ModelCheckpoint(
+        monitor='val_loss',
+        dirpath='checkpoints',
+        filename='bitcoin-lstm-{epoch:02d}-{val_loss:.4f}',
+        save_top_k=3,
+        mode='min',
+        save_last=True
+    )
 
-        # Train
-        print("\n" + "=" * 80)
-        print("Starting training...")
-        print("=" * 80)
-        trainer.fit(model, data_module)
+    early_stop_callback = EarlyStopping(
+        monitor='val_loss',
+        patience=50,
+        mode='min',
+        verbose=True
+    )
 
-        # Log best model path
-        mlflow.log_param("best_model_path", checkpoint_callback.best_model_path)
-        mlflow.log_metric("best_val_loss", checkpoint_callback.best_model_score.item())
+    # Trainer
+    trainer = pl.Trainer(
+        max_epochs=args.epochs,
+        callbacks=[checkpoint_callback, early_stop_callback],
+        logger=mlflow_logger,
+        accelerator='auto',
+        devices=1,
+        log_every_n_steps=10,
+        deterministic=True,
+        enable_progress_bar=True
+    )
 
-        # Test
-        print("\n" + "=" * 80)
-        print("Testing on held-out test set...")
-        print("=" * 80)
-        test_results = trainer.test(model, data_module, ckpt_path='best')
+    # Train
+    print("\n" + "=" * 80)
+    print("Starting training...")
+    print("=" * 80)
+    trainer.fit(model, data_module)
 
-        # Generate classification report
-        print("\n" + "=" * 80)
-        print("Classification Report:")
-        print("=" * 80)
-        target_names = ['Up (0)', 'Neutral (1)', 'Down (2)']
-        report = classification_report(model.test_targets, model.test_predictions,
-                                       target_names=target_names)
-        print(report)
+    # Log best model path
+    mlflow.log_param("best_model_path", checkpoint_callback.best_model_path)
+    mlflow.log_metric("best_val_loss", checkpoint_callback.best_model_score.item())
 
-        # Save classification report as artifact
-        report_path = "classification_report.txt"
-        with open(report_path, 'w') as f:
-            f.write(report)
-        mlflow.log_artifact(report_path)
+    # Test
+    print("\n" + "=" * 80)
+    print("Testing on held-out test set...")
+    print("=" * 80)
+    test_results = trainer.test(model, data_module, ckpt_path='best')
 
-        # Generate and log confusion matrix
-        print("\nConfusion Matrix:")
-        print("=" * 80)
-        cm = confusion_matrix(model.test_targets, model.test_predictions)
-        print("Predicted ->")
-        print(f"           Up  Neutral  Down")
-        for i, row in enumerate(cm):
-            print(f"{target_names[i]:8s} {row[0]:5d}  {row[1]:5d}  {row[2]:5d}")
+    # Generate classification report
+    print("\n" + "=" * 80)
+    print("Classification Report:")
+    print("=" * 80)
+    target_names = ['Up (0)', 'Neutral (1)', 'Down (2)']
+    report = classification_report(model.test_targets, model.test_predictions,
+                                   target_names=target_names)
+    print(report)
 
-        # Save confusion matrix as artifact
-        cm_df = pd.DataFrame(cm,
-                             index=['True Up', 'True Neutral', 'True Down'],
-                             columns=['Pred Up', 'Pred Neutral', 'Pred Down'])
-        cm_path = "confusion_matrix.csv"
-        cm_df.to_csv(cm_path)
-        mlflow.log_artifact(cm_path)
+    # Save classification report as artifact
+    report_path = "classification_report.txt"
+    with open(report_path, 'w') as f:
+        f.write(report)
+    mlflow.log_artifact(report_path)
 
-        # Log model to MLflow
-        print("\nLogging model to MLflow...")
-        mlflow.pytorch.log_model(model, "model")
+    # Generate and log confusion matrix
+    print("\nConfusion Matrix:")
+    print("=" * 80)
+    cm = confusion_matrix(model.test_targets, model.test_predictions)
+    print("Predicted ->")
+    print(f"           Up  Neutral  Down")
+    for i, row in enumerate(cm):
+        print(f"{target_names[i]:8s} {row[0]:5d}  {row[1]:5d}  {row[2]:5d}")
 
-        # Log best checkpoint as artifact
-        if checkpoint_callback.best_model_path:
-            mlflow.log_artifact(checkpoint_callback.best_model_path, "checkpoints")
+    # Save confusion matrix as artifact
+    cm_df = pd.DataFrame(cm,
+                         index=['True Up', 'True Neutral', 'True Down'],
+                         columns=['Pred Up', 'Pred Neutral', 'Pred Down'])
+    cm_path = "confusion_matrix.csv"
+    cm_df.to_csv(cm_path)
+    mlflow.log_artifact(cm_path)
 
-        print("\n" + "=" * 80)
-        print("Training completed!")
-        print(f"MLflow Run ID: {run.info.run_id}")
-        print(f"Best model saved to: {checkpoint_callback.best_model_path}")
-        print(f"View results at: {os.getenv('MLFLOW_TRACKING_URI', 'MLflow UI')}")
-        print("=" * 80)
+    # Log model to MLflow
+    print("\nLogging model to MLflow...")
+    mlflow.pytorch.log_model(model, "model")
+
+    # Log best checkpoint as artifact
+    if checkpoint_callback.best_model_path:
+        mlflow.log_artifact(checkpoint_callback.best_model_path, "checkpoints")
+
+    print("\n" + "=" * 80)
+    print("Training completed!")
+    print(f"MLflow Run ID: {mlflow_logger.run_id}")
+    print(f"Best model saved to: {checkpoint_callback.best_model_path}")
+    print(f"View results at: {os.getenv('MLFLOW_TRACKING_URI', 'MLflow UI')}")
+    print("=" * 80)
 
 
 if __name__ == '__main__':
