@@ -22,6 +22,7 @@ class SimpleLSTMClassifier(pl.LightningModule):
 
     def __init__(self, n_features: int, hidden_size: int = 64,
                  num_classes: int = 3, learning_rate: float = 0.001,
+                 num_layers: int = 3,
                  dropout: float = 0.0):
         super().__init__()
         self.save_hyperparameters()
@@ -29,7 +30,7 @@ class SimpleLSTMClassifier(pl.LightningModule):
         self.lstm = nn.LSTM(
             input_size=n_features,
             hidden_size=hidden_size,
-            num_layers=1,
+            num_layers=num_layers,
             batch_first=True,
             dropout=dropout if dropout > 0 else 0
         )
@@ -115,5 +116,6 @@ class SimpleLSTMClassifier(pl.LightningModule):
         return {
             'optimizer': optimizer,
             'lr_scheduler': scheduler,
-            'monitor': 'val_loss'
+            # 'monitor': 'val_loss'
+            "monitor": 'val_acc'
         }

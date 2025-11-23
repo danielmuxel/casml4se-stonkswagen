@@ -116,6 +116,20 @@ class TimeSeriesDataModule(pl.LightningDataModule):
         mlflow.log_metric("val_slices", len(self.val_dataset))
         mlflow.log_metric("test_slices", len(self.test_dataset))
 
+        # Log class distributions
+        train_class_dist = pd.Series(train_labels).value_counts().to_dict()
+        val_class_dist = pd.Series(val_labels).value_counts().to_dict()
+        test_class_dist = pd.Series(test_labels).value_counts().to_dict()
+
+        mlflow.log_dict(train_class_dist, "train_class_distribution.json")
+        mlflow.log_dict(val_class_dist, "val_class_distribution.json")
+        mlflow.log_dict(test_class_dist, "test_class_distribution.json")
+
+        # Log original data splits (before slicing)
+        mlflow.log_text(df_train.to_csv(index=False), "train_data.csv")
+        mlflow.log_text(df_val.to_csv(index=False), "val_data.csv")
+        mlflow.log_text(df_test.to_csv(index=False), "test_data.csv")
+
     def train_dataloader(self):
         return DataLoader(self.train_dataset, batch_size=self.batch_size,
                           num_workers=self.num_workers, persistent_workers=True)

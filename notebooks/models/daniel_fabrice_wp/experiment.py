@@ -1,13 +1,10 @@
+
 """
 Bitcoin Time Series Data Preparation and Training Pipeline
 Based on: "Financial Time Series Data Processing for Machine Learning" by Fabrice Daniel (2019)
-
-Usage:
-    python experiment.py --data_path btc_5min.csv --epochs 100
 """
 import time
 import os
-import argparse
 import warnings
 import pandas as pd
 
@@ -29,39 +26,43 @@ warnings.filterwarnings('ignore')
 load_dotenv()
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description='aBitcoin Time Series ML Pipeline with MLflow logging',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    parser.add_argument('--data_path', type=str, default=os.path.join(os.getenv('DATA_PATH'), 'cryptos', 'bitcoin-tiny.csv'),
-                        help='Path to CSV file with columns: timestamp,open,high,low,close,volume')
-    parser.add_argument('--experiment_name', type=str, default='bitcoin_timeseries2',
-                        help='MLflow experiment name')
-    parser.add_argument('--run_name', type=str, default=None,
-                        help='MLflow run name (optional)')
-    parser.add_argument('--lookback', type=int, default=20,
-                        help='Lookback period (number of bars per slice)')
-    parser.add_argument('--horizon', type=int, default=12,
-                        help='Prediction horizon (bars ahead to predict)')
-    parser.add_argument('--hidden_size', type=int, default=64,
-                        help='LSTM hidden size')
-    parser.add_argument('--dropout', type=float, default=0.2,
-                        help='Dropout rate')
-    parser.add_argument('--batch_size', type=int, default=64,
-                        help='Batch size')
-    parser.add_argument('--epochs', type=int, default=250,
-                        help='Maximum number of epochs')
-    parser.add_argument('--learning_rate', type=float, default=0.001,
-                        help='Learning rate')
-    parser.add_argument('--num_workers', type=int, default=40,
-                        help='Number of dataloader workers')
-    parser.add_argument('--seed', type=int, default=42,
-                        help='Random seed')
-    args = parser.parse_args()
-
+def train(
+    data_path: str = None,
+    experiment_name: str = 'bitcoin_timeseries2',
+    run_name: str = None,
+    lookback: int = 20,
+    horizon: int = 12,
+    hidden_size: int = 64,
+    dropout: float = 0.2,
+    batch_size: int = 64,
+    epochs: int = 250,
+    learning_rate: float = 0.001,
+    num_workers: int = 40,
+    seed: int = 42
+):
+    """
+    Train a Bitcoin time series prediction model.
+    
+    Args:
+        data_path: Path to CSV file with columns: timestamp,open,high,low,close,volume
+        experiment_name: MLflow experiment name
+        run_name: MLflow run name (optional)
+        lookback: Lookback period (number of bars per slice)
+        horizon: Prediction horizon (bars ahead to predict)
+        hidden_size: LSTM hidden size
+        dropout: Dropout rate
+        batch_size: Batch size
+        epochs: Maximum number of epochs
+        learning_rate: Learning rate
+        num_workers: Number of dataloader workers
+        seed: Random seed
+    """
+    # Set default data path if not provided
+    if data_path is None:
+        data_path = os.path.join(os.getenv('DATA_PATH'), 'cryptos', 'bitcoin-tiny.csv')
+    
     # Set random seeds
-    pl.seed_everything(args.seed)
+    pl.seed_everything(seed)
 
     print("=" * 80)
     print("Bitcoin Time Series ML Pipeline with MLflow Tracking")
@@ -69,11 +70,11 @@ def main():
     print("=" * 80)
     print(f"\nMLflow Configuration:")
     print(f"  Tracking URI: {os.getenv('MLFLOW_TRACKING_URI', 'Not set')}")
-    print(f"  Experiment Name: {args.experiment_name}")
+    print(f"  Experiment Name: {experiment_name}")
     print("=" * 80)
 
     # Set MLflow experiment
-    mlflow.set_experiment(args.experiment_name)
+    mlflow.set_experiment(experiment_name)
 
     # ========================================================================
     # START MLFLOW RUN
@@ -81,7 +82,7 @@ def main():
     if mlflow.active_run():
         print("\nWarning: Found active MLflow run. Ending it before starting new run...")
         mlflow.end_run()
-    mlflow.start_run(run_name=args.run_name)
+    mlflow.start_run(run_name=run_name)
 
     start_time = time.time()
     mlflow.log_metric("start_timestamp", start_time)
@@ -94,7 +95,7 @@ def main():
     )
 
     print(f"\nMLflow Run ID: {mlflow_logger.run_id}")
-    print(f"MLflow Run Name: {args.run_name}")
+    print(f"MLflow Run Name: {run_name}")
 
     print("\n" + "=" * 80)
     print("Starting data preprocessing...")
@@ -102,11 +103,11 @@ def main():
 
     # Initialize data module
     data_module = TimeSeriesDataModule(
-        data_path=args.data_path,
-        lookback=args.lookback,
-        horizon=args.horizon,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers
+        data_path=data_path,
+        lookback=lookback,
+        horizon=horizon,
+        batch_size=batch_size,
+        num_workers=num_workers
     )
 
     # Setup data (this runs all preprocessing)
@@ -117,16 +118,16 @@ def main():
     print("=" * 80)
 
     # Log all hyperparameters
-    mlflow.log_param("data_path", args.data_path)
-    mlflow.log_param("lookback", args.lookback)
-    mlflow.log_param("horizon", args.horizon)
-    mlflow.log_param("hidden_size", args.hidden_size)
-    mlflow.log_param("dropout", args.dropout)
-    mlflow.log_param("batch_size", args.batch_size)
-    mlflow.log_param("max_epochs", args.epochs)
-    mlflow.log_param("learning_rate", args.learning_rate)
-    mlflow.log_param("seed", args.seed)
-    mlflow.log_param("num_workers", args.num_workers)
+    mlflow.log_param("data_path", data_path)
+    mlflow.log_param("lookback", lookback)
+    mlflow.log_param("horizon", horizon)
+    mlflow.log_param("hidden_size", hidden_size)
+    mlflow.log_param("dropout", dropout)
+    mlflow.log_param("batch_size", batch_size)
+    mlflow.log_param("max_epochs", epochs)
+    mlflow.log_param("learning_rate", learning_rate)
+    mlflow.log_param("seed", seed)
+    mlflow.log_param("num_workers", num_workers)
 
     # Log paper methodology
     mlflow.log_param("scaling_method", "standardization")
@@ -151,10 +152,10 @@ def main():
     # Initialize model
     model = SimpleLSTMClassifier(
         n_features=data_module.n_features,
-        hidden_size=args.hidden_size,
+        hidden_size=hidden_size,
         num_classes=3,  # QClass: Up, Neutral, Down
-        learning_rate=args.learning_rate,
-        dropout=args.dropout
+        learning_rate=learning_rate,
+        dropout=dropout
     )
 
     total_params = sum(p.numel() for p in model.parameters())
@@ -162,7 +163,7 @@ def main():
 
     print(f"\nModel architecture:")
     print(f"  Input features: {data_module.n_features}")
-    print(f"  LSTM hidden size: {args.hidden_size}")
+    print(f"  LSTM hidden size: {hidden_size}")
     print(f"  Output classes: 3 (Up/Neutral/Down)")
     print(f"  Total parameters: {total_params:,}")
     print(f"  Trainable parameters: {trainable_params:,}")
@@ -192,7 +193,7 @@ def main():
 
     # Trainer
     trainer = pl.Trainer(
-        max_epochs=args.epochs,
+        max_epochs=epochs,
         callbacks=[checkpoint_callback, early_stop_callback],
         logger=mlflow_logger,
         accelerator='auto',
@@ -266,5 +267,5 @@ def main():
     print("=" * 80)
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    train()
