@@ -23,7 +23,8 @@ from data_preparation import (
 )
 
 from dataset import TimeSeriesDataset, TimeSeriesDataModule
-from model import SimpleLSTMClassifier
+from model import SimpleLSTMClassifier, AdvancedLSTMWithAttention
+from gridsearch import GridSearchCV, run_gridsearch, get_default_param_grid
 
 __all__ = [
     # Data preparation functions
@@ -40,6 +41,11 @@ __all__ = [
     # Dataset classes
     'TimeSeriesDataset',
     'TimeSeriesDataModule',
-    # Model class
+    # Model classes
     'SimpleLSTMClassifier',
+    'AdvancedLSTMWithAttention',
+    # Grid search classes and functions
+    'GridSearchCV',
+    'run_gridsearch',
+    'get_default_param_grid',
 ]

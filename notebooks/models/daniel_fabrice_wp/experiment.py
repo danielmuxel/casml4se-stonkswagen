@@ -18,7 +18,7 @@ import mlflow.pytorch
 from dotenv import load_dotenv
 
 from dataset import TimeSeriesDataModule
-from model import SimpleLSTMClassifier
+from model import SimpleLSTMClassifier, AdvancedLSTMWithAttention
 
 warnings.filterwarnings('ignore')
 
@@ -30,15 +30,23 @@ def train(
     data_path: str = None,
     experiment_name: str = 'bitcoin_timeseries2',
     run_name: str = None,
+    model_type: str = 'simple',
     lookback: int = 20,
     horizon: int = 12,
     hidden_size: int = 64,
+    num_layers: int = 3,
     dropout: float = 0.2,
     batch_size: int = 64,
     epochs: int = 250,
     learning_rate: float = 0.001,
     num_workers: int = 40,
-    seed: int = 42
+    seed: int = 42,
+    # Advanced model specific parameters
+    num_attention_heads: int = 4,
+    layer_dropout: float = 0.1,
+    weight_decay: float = 1e-5,
+    use_conv: bool = True,
+    conv_kernel_size: int = 3
 ):
     """
     Train a Bitcoin time series prediction model.
@@ -47,19 +55,26 @@ def train(
         data_path: Path to CSV file with columns: timestamp,open,high,low,close,volume
         experiment_name: MLflow experiment name
         run_name: MLflow run name (optional)
+        model_type: Model architecture to use ('simple' or 'advanced')
         lookback: Lookback period (number of bars per slice)
         horizon: Prediction horizon (bars ahead to predict)
         hidden_size: LSTM hidden size
+        num_layers: Number of LSTM layers
         dropout: Dropout rate
         batch_size: Batch size
         epochs: Maximum number of epochs
         learning_rate: Learning rate
         num_workers: Number of dataloader workers
         seed: Random seed
+        num_attention_heads: Number of attention heads (advanced model only)
+        layer_dropout: Layer dropout rate (advanced model only)
+        weight_decay: Weight decay for optimizer (advanced model only)
+        use_conv: Use 1D convolution (advanced model only)
+        conv_kernel_size: Convolution kernel size (advanced model only)
     """
     # Set default data path if not provided
     if data_path is None:
-        data_path = os.path.join(os.getenv('DATA_PATH'), 'cryptos', 'bitcoin-tiny.csv')
+        data_path = os.path.join(os.getenv('DATA_PATH'), 'cryptos', 'bitcoin.csv')
     
     # Set random seeds
     pl.seed_everything(seed)
@@ -149,28 +164,69 @@ def train(
     mlflow.log_metric("val_slices", len(data_module.val_dataset))
     mlflow.log_metric("test_slices", len(data_module.test_dataset))
 
-    # Initialize model
-    model = SimpleLSTMClassifier(
-        n_features=data_module.n_features,
-        hidden_size=hidden_size,
-        num_classes=3,  # QClass: Up, Neutral, Down
-        learning_rate=learning_rate,
-        dropout=dropout
-    )
+    # Initialize model based on model_type
+    model_type = model_type.lower()
+    
+    if model_type == 'simple':
+        print(f"\nInitializing SimpleLSTMClassifier...")
+        model = SimpleLSTMClassifier(
+            n_features=data_module.n_features,
+            hidden_size=hidden_size,
+            num_classes=3,  # QClass: Up, Neutral, Down
+            num_layers=num_layers,
+            learning_rate=learning_rate,
+            dropout=dropout
+        )
+        mlflow.log_param("model_architecture", "SimpleLSTMClassifier")
+        
+    elif model_type == 'advanced':
+        print(f"\nInitializing AdvancedLSTMWithAttention...")
+        # Ensure hidden_size is divisible by num_attention_heads
+        if hidden_size % num_attention_heads != 0:
+            adjusted_hidden_size = ((hidden_size // num_attention_heads) + 1) * num_attention_heads
+            print(f"  Warning: Adjusting hidden_size from {hidden_size} to {adjusted_hidden_size}")
+            print(f"  (must be divisible by num_attention_heads={num_attention_heads})")
+            hidden_size = adjusted_hidden_size
+            
+        model = AdvancedLSTMWithAttention(
+            n_features=data_module.n_features,
+            hidden_size=hidden_size,
+            num_classes=3,  # QClass: Up, Neutral, Down
+            num_layers=num_layers,
+            num_attention_heads=num_attention_heads,
+            dropout=dropout,
+            layer_dropout=layer_dropout,
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            use_conv=use_conv,
+            conv_kernel_size=conv_kernel_size
+        )
+        mlflow.log_param("model_architecture", "AdvancedLSTMWithAttention")
+        mlflow.log_param("num_attention_heads", num_attention_heads)
+        mlflow.log_param("layer_dropout", layer_dropout)
+        mlflow.log_param("weight_decay", weight_decay)
+        mlflow.log_param("use_conv", use_conv)
+        mlflow.log_param("conv_kernel_size", conv_kernel_size)
+        
+    else:
+        raise ValueError(f"Unknown model_type: {model_type}. Use 'simple' or 'advanced'")
 
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
     print(f"\nModel architecture:")
+    print(f"  Model type: {model_type}")
     print(f"  Input features: {data_module.n_features}")
     print(f"  LSTM hidden size: {hidden_size}")
+    print(f"  Number of layers: {num_layers}")
     print(f"  Output classes: 3 (Up/Neutral/Down)")
     print(f"  Total parameters: {total_params:,}")
     print(f"  Trainable parameters: {trainable_params:,}")
 
     # Log model info
-    mlflow.log_param("model_type", "LSTM")
+    mlflow.log_param("model_type", model_type)
     mlflow.log_param("num_classes", 3)
+    mlflow.log_param("num_layers", num_layers)
     mlflow.log_param("total_parameters", total_params)
     mlflow.log_param("trainable_parameters", trainable_params)
 
@@ -186,7 +242,7 @@ def train(
 
     early_stop_callback = EarlyStopping(
         monitor='val_loss',
-        patience=50,
+        patience=10,
         mode='min',
         verbose=True
     )
@@ -268,4 +324,4 @@ def train(
 
 
 if __name__ == "__main__":
-    train()
+    train(num_layers=16, hidden_size=256, learning_rate=0.01, model_type='advanced')
