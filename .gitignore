@@ -76,3 +76,8 @@ checkpoints/
 # Ignoring MLflow backend data folders
 /infra/MLFlow/minio-data/
 /infra/MLFlow/pgdata/
+
+notebooks/**/data/*
+
+# Python packaging
+*.egg-info/
