@@ -14,7 +14,7 @@ from typing import Iterable, Literal, Sequence
 import pandas as pd
 from sqlalchemy import bindparam, text  # type: ignore[import]
 
-from .client import ConnectionInput, _ensure_client
+from .database_client import ConnectionInput, _ensure_client
 
 
 ITEM_COLUMNS: list[str] = [

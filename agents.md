@@ -5,7 +5,7 @@ This playbook distills every `README.md` in the repository so an agent can confi
 ## 1. Mission & Quick Start
 - Treat `ml/` as the production-grade machine-learning workspace; everything else either feeds it (data/scripts) or publishes it (apps/infra/models).
 - Keep bulky or sensitive assets out of git. Prefer scripted download or generation steps recorded under `scripts/` or `docs/`.
-- When experimenting, start in `notebooks/`, then promote reusable logic into `ml/common/`, pipelines into `ml/pipelines/`, and final artifacts into `models/`.
+- When experimenting, start in `notebooks/`, then promote reusable logic into `src/gw2ml/`, pipelines into `ml/pipelines/`, and final artifacts into `models/`.
 - Run the curated ML validation suite before sharing changes:
   ```bash
   uv run --project ml python scripts/run_ml_tests.py
@@ -19,7 +19,7 @@ This playbook distills every `README.md` in the repository so an agent can confi
 | `docs/` | System design, experiment reports, onboarding, and API notes. | Capture findings from experiments, playbooks like this, and SOPs. |
 | `infra/` | Deployment, IaC, container specs, MLflow tracking setup. | Update when provisioning new environments or adjusting infrastructure. |
 | `ml/` | Core ML workspace: shared code, pipelines, configs, tests. | Move any reusable experiment logic here. |
-| `ml/common/` | Feature engineering, logging, config, DB helpers. | Implement utilities that multiple pipelines/models share. |
+| `src/gw2ml/` | Feature engineering, logging, config, DB helpers. | Implement utilities that multiple pipelines/models share. |
 | `ml/models/` | PyTorch Lightning modules, Darts models, training logic. | Define model classes and their training routines. |
 | `ml/pipelines/` | End-to-end training/evaluation orchestration with metrics + MLflow logging. | Build reproducible workflows that call into data, models, and trackers. |
 | `ml/tests/` | Pytest-based regression, smoke, and data validation suites. | Add coverage for new utilities, pipelines, or model behaviors. |
@@ -34,12 +34,12 @@ This playbook distills every `README.md` in the repository so an agent can confi
 - **Document every step.** Pair each major dataset, experiment series, or release with narrative notes inside `docs/` so future agents can replay the work.
 
 ## 4. Core ML Workspace (`ml/`)
-### Shared Utilities – `ml/common/`
+### Shared Utilities – `src/gw2ml/`
 - Centralize preprocessing, feature engineering, configuration, and logging helpers here so pipelines stay DRY.
 - Includes a `database` submodule with a `DatabaseClient` factory plus query helpers. Instantiate the client once and pass it around:
   ```python
   from datetime import datetime, UTC, timedelta
-  from ml.common import DatabaseClient, database
+  from gw2ml import DatabaseClient, database
 
   client = DatabaseClient.from_env()
   last_day = datetime.now(UTC) - timedelta(days=1)
@@ -98,7 +98,7 @@ This playbook distills every `README.md` in the repository so an agent can confi
 1. **Define intent** – capture the problem statement inside `docs/` or an issue.
 2. **Gather data** – stage or document datasets in `data/` and codify ingestion under `scripts/`.
 3. **Prototype** – explore in `notebooks/`, logging observations back into `docs/`.
-4. **Productionize** – lift reusable code into `ml/common/`, `ml/models/`, and `ml/pipelines/`.
+4. **Productionize** – lift reusable code into `src/gw2ml/`, `ml/models/`, and `ml/pipelines/`.
 5. **Validate** – add or update pytest coverage under `ml/tests/`, register curated cases, and run `uv run --project ml python scripts/run_ml_tests.py`.
 6. **Package outputs** – store metadata for champion models in `models/` and hook up any necessary dashboards in `apps/`.
 7. **Deploy & document** – reflect infra changes under `infra/`, and close the loop with final notes in `docs/`.

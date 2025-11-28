@@ -1,3 +1,24 @@
+# ==============================================================================
+# General
+# ==============================================================================
+# OS-generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and editor configuration
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ==============================================================================
+# Python & Virtual Environments
+# ==============================================================================
 # Python caches
 __pycache__/
 *.py[cod]
@@ -5,42 +26,53 @@ __pycache__/
 *.pyd
 *.so
 
-# Virtual environments and tooling
-.env
-.venv/
-#.python-version
+# Caches
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
 
-# Dependency managers
-uv.lock
-poetry.lock
-Pipfile.lock
+# Virtual environments - this covers all .venv folders project-wide
+.venv/
 
-# IDE and editor state
-.idea/
-.vscode/
-*.swp
-*.swo
+# Environment variables
+.env
+.env.*
+!.env.example
 
-# Machine-learning artifacts
+# Dependency lock files (It is often best practice to commit these)
+# poetry.lock
+# uv.lock
+
+# ==============================================================================
+# ML & Data Artifacts
+# ==============================================================================
+# MLflow tracking
 mlruns/
 artifacts/
-checkpoints/
 
-# Data and model binaries (keep documentation)
-data/*
-!data/*.md
-!data/.gitkeep
+# Local model storage (Outputs from training)
+# Ignoring all files in /models, but keeping the directory and any docs.
 models/*
+!models/
 !models/*.md
 !models/.gitkeep
 
-# Notebooks and reports outputs
-notebooks/.ipynb_checkpoints/
-notebooks/data/*
-**.DS_Store
+# Data storage (Raw and processed data)
+# Ignoring all files in /data, but keeping the directory and any docs.
+data/*
+!data/
+!data/*.md
+!data/.gitkeep
+
+# Checkpoints
+checkpoints/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# ==============================================================================
+# Project-specific Infrastructure
+# ==============================================================================
+# Ignoring MLflow backend data folders
 /infra/MLFlow/minio-data/
 /infra/MLFlow/pgdata/
-

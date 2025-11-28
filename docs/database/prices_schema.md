@@ -17,7 +17,7 @@
 ```python
 from datetime import UTC, datetime
 
-from ml.common.database import DatabaseClient, get_prices
+from gw2ml.data import DatabaseClient, get_prices
 
 
 client = DatabaseClient.from_env()

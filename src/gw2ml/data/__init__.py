@@ -5,8 +5,8 @@ This module exposes a lightweight `DatabaseClient` wrapper along with helper
 functions stored in sibling modules for convenient access patterns.
 """
 
-from .client import DatabaseClient, ConnectionInput, resolve_connection_url
-from .queries import (
+from .database_client import DatabaseClient, ConnectionInput, resolve_connection_url
+from .database_queries import (
     get_bltc_history,
     get_generic_rows,
     get_item_count,

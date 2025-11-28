@@ -38,10 +38,10 @@ if torch.cuda.is_available():
         print(f"Error: {e}")
 
 
-datapath = "../../data/evaluations/"
+datapath = "data/evaluations/"
 
 # Download source data from s3
-from ml.common.folder_s3_sync import download_folder_from_s3
+from gw2ml.data.s3_sync import download_folder_from_s3
 
 # Load environment variables
 load_dotenv()

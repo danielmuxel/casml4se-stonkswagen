@@ -1,4 +1,4 @@
-# ml/common
+# src/gw2ml
 
 Shared preprocessing steps, feature engineering helpers, logging utilities, and configuration primitives belong here. Anything reused across multiple environments or model families should live in this package.
 
@@ -9,7 +9,7 @@ The `database` submodule exposes a `DatabaseClient` wrapper plus query helpers t
 ```python
 from datetime import datetime, UTC, timedelta
 
-from ml.common import DatabaseClient, database
+from gw2ml import DatabaseClient, database
 
 
 client = DatabaseClient.from_env()

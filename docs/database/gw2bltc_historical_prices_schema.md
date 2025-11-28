@@ -18,7 +18,7 @@
 ## Usage
 
 ```python
-from ml.common.database import DatabaseClient, get_bltc_history
+from gw2ml.data import DatabaseClient, get_bltc_history
 
 
 client = DatabaseClient.from_env()

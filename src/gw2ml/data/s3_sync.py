@@ -6,19 +6,18 @@ from pathlib import Path
 from datetime import datetime
 import hashlib
 
-# Configuration
-hetzner_endpoint = os.getenv('HETZNER_S3_ENDPOINT')
-access_key = os.getenv('HETZNER_S3_ACCESS_KEY')
-secret_key = os.getenv('HETZNER_S3_SECRET_KEY')
-
-# Initialize S3 client for Hetzner
-s3_client = boto3.client(
-    's3',
-    endpoint_url=hetzner_endpoint,
-    aws_access_key_id=access_key,
-    aws_secret_access_key=secret_key,
-    region_name='fsn1'  # or 'nbg1' depending on your region
-)
+def get_s3_client():
+    """Initializes and returns a boto3 S3 client from environment variables."""
+    hetzner_endpoint = os.getenv('HETZNER_S3_ENDPOINT')
+    access_key = os.getenv('HETZNER_S3_ACCESS_KEY')
+    secret_key = os.getenv('HETZNER_S3_SECRET_KEY')
+    return boto3.client(
+        's3',
+        endpoint_url=hetzner_endpoint,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        region_name='fsn1'  # or 'nbg1' depending on your region
+    )
 
 def calculate_etag(file_path):
     """Calculate ETag (MD5 hash) of a local file to match S3's ETag"""
@@ -33,6 +32,7 @@ def upload_folder_to_s3(local_folder , s3_folder_prefix,  unix_timestamp, bucket
     """
     Upload all files from a local folder to Hetzner Object Storage
     """
+    s3_client = get_s3_client()
     local_path = Path(local_folder)
 
     if not local_path.exists():
@@ -86,6 +86,7 @@ def download_folder_from_s3(s3_folder_prefix, local_folder, bucket_name="ost-s3"
         bucket_name: S3 bucket name (default: 'ost-s3')
         skip_existing: Skip files that already exist with matching ETag (default: True)
     """
+    s3_client = get_s3_client()
     local_path = Path(local_folder)
 
     # Create local folder if it doesn't exist

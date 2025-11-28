@@ -11,17 +11,14 @@ import os
 import pandas as pd
 import pytest
 
-from ml.common import DatabaseClient, database
+from gw2ml import DatabaseClient, database
 
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "tests"
 
 
 def _resolve_client() -> DatabaseClient:
-    try:
-        return DatabaseClient.from_env()
-    except ValueError as exc:
-        pytest.skip(str(exc))
+    return DatabaseClient.from_env()
 
 
 def _resolve_item_id() -> int:
