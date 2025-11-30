@@ -52,7 +52,7 @@ class GridSearchCV:
         self.model_type = model_type.lower()
         self.data_path = data_path
         self.experiment_name = experiment_name
-        self.parent_run_name = parent_run_name or f"gridsearch_{model_type}_{int(time.time())}"
+        self.parent_run_name = parent_run_name or f"gridsearch_hp2_{model_type}_{int(time.time())}"
         self.seed = seed
         
         # Results storage
@@ -190,7 +190,7 @@ class GridSearchCV:
                 monitor='val_acc',
                 patience=10,
                 mode='max',
-                verbose=False
+                verbose=True
             )
             
             # Trainer
@@ -202,8 +202,8 @@ class GridSearchCV:
                 devices=1,
                 log_every_n_steps=10,
                 deterministic=True,
-                enable_progress_bar=False,
-                enable_model_summary=False
+                enable_progress_bar=True,
+                enable_model_summary=True
             )
             
             # Train
@@ -479,47 +479,49 @@ if __name__ == "__main__":
     # ========================================================================
     # RUN 1: SimpleLSTMClassifier with comprehensive grid
     # ========================================================================
-    print("\n" + "=" * 80)
-    print("RUN 1: SimpleLSTMClassifier - Comprehensive Grid Search")
-    print("=" * 80)
-    
-    custom_grid_simple = {
-        'hidden_size': [64, 128, 256, 512],
-        'num_layers': [2, 3, 4],
-        'dropout': [0.1, 0.2, 0.3, 0.4],
-        'learning_rate': [0.0001, 0.001, 0.01]
-    }
-    
-    total_simple = (len(custom_grid_simple['hidden_size']) * 
-                   len(custom_grid_simple['num_layers']) * 
-                   len(custom_grid_simple['dropout']) * 
-                   len(custom_grid_simple['learning_rate']))
-    
-    print(f"Parameter Grid:")
-    print(f"  hidden_size: {custom_grid_simple['hidden_size']}")
-    print(f"  num_layers: {custom_grid_simple['num_layers']}")
-    print(f"  dropout: {custom_grid_simple['dropout']}")
-    print(f"  learning_rate: {custom_grid_simple['learning_rate']}")
-    print(f"  Total combinations: {total_simple}")
-    print("=" * 80 + "\n")
-    
-    grid_search_simple = run_gridsearch(
-        model_type='simple',
-        param_grid=custom_grid_simple,
-        experiment_name='bitcoin_gridsearch_simple_comprehensive',
-        epochs=150,
-        batch_size=64,
-        num_workers=8
-    )
-    
-    print("\n" + "=" * 80)
-    print("SimpleLSTMClassifier Grid Search Complete!")
-    print("=" * 80)
-    print(f"Best Validation Accuracy: {grid_search_simple.best_score:.4f}")
-    print(f"Best Parameters: {grid_search_simple.best_params}")
-    print(f"Best Run ID: {grid_search_simple.best_run_id}")
-    print("\nTop 10 Results:")
-    print(grid_search_simple.get_results_dataframe().head(10).to_string(index=False))
+    execsimple = False
+    if execsimple:
+        print("\n" + "=" * 80)
+        print("RUN 1: SimpleLSTMClassifier - Comprehensive Grid Search")
+        print("=" * 80)
+
+        custom_grid_simple = {
+            'hidden_size': [64, 128, 256, 512],
+            'num_layers': [2, 3, 4],
+            'dropout': [0.1, 0.2, 0.3, 0.4],
+            'learning_rate': [0.0001, 0.001, 0.01]
+        }
+
+        total_simple = (len(custom_grid_simple['hidden_size']) *
+                       len(custom_grid_simple['num_layers']) *
+                       len(custom_grid_simple['dropout']) *
+                       len(custom_grid_simple['learning_rate']))
+
+        print(f"Parameter Grid:")
+        print(f"  hidden_size: {custom_grid_simple['hidden_size']}")
+        print(f"  num_layers: {custom_grid_simple['num_layers']}")
+        print(f"  dropout: {custom_grid_simple['dropout']}")
+        print(f"  learning_rate: {custom_grid_simple['learning_rate']}")
+        print(f"  Total combinations: {total_simple}")
+        print("=" * 80 + "\n")
+
+        grid_search_simple = run_gridsearch(
+            model_type='simple',
+            param_grid=custom_grid_simple,
+            experiment_name='bitcoin_gridsearch_simple_comprehensive',
+            epochs=150,
+            batch_size=64,
+            num_workers=8
+        )
+
+        print("\n" + "=" * 80)
+        print("SimpleLSTMClassifier Grid Search Complete!")
+        print("=" * 80)
+        print(f"Best Validation Accuracy: {grid_search_simple.best_score:.4f}")
+        print(f"Best Parameters: {grid_search_simple.best_params}")
+        print(f"Best Run ID: {grid_search_simple.best_run_id}")
+        print("\nTop 10 Results:")
+        print(grid_search_simple.get_results_dataframe().head(10).to_string(index=False))
     
     # ========================================================================
     # RUN 2: AdvancedLSTMWithAttention with comprehensive grid
@@ -527,15 +529,15 @@ if __name__ == "__main__":
     print("\n\n" + "=" * 80)
     print("RUN 2: AdvancedLSTMWithAttention - Comprehensive Grid Search")
     print("=" * 80)
-    
+
     custom_grid_advanced = {
         'hidden_size': [128, 256, 512],
         'num_layers': [2, 3, 4],
         'num_attention_heads': [4, 8, 16],
-        'dropout': [0.2, 0.3, 0.4],
-        'layer_dropout': [0.1, 0.2],
-        'learning_rate': [0.0001, 0.001],
-        'weight_decay': [1e-5, 1e-4, 1e-3]
+        'dropout': [0],
+        'layer_dropout': [0],
+        'learning_rate': [0.001],
+        'weight_decay': [1e-6, 1e-5, 1e-4]
     }
     
     total_advanced = (len(custom_grid_advanced['hidden_size']) * 

@@ -113,12 +113,11 @@ class SimpleLSTMClassifier(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.5, patience=5)
+            optimizer, mode='max', factor=0.5, patience=5)
         return {
             'optimizer': optimizer,
             'lr_scheduler': scheduler,
-            'monitor': 'val_loss'
-            # "monitor": 'val_acc'
+            'monitor': 'val_acc'
         }
 
 
@@ -181,7 +180,7 @@ class AdvancedLSTMWithAttention(pl.LightningModule):
                 in_channels=n_features,
                 out_channels=n_features,
                 kernel_size=conv_kernel_size,
-                padding=conv_kernel_size // 2
+                padding='same'
             )
             self.conv_norm = nn.LayerNorm(n_features)
         

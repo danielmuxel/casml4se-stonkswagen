@@ -41,6 +41,7 @@ def train(
     learning_rate: float = 0.001,
     num_workers: int = 40,
     seed: int = 42,
+    test_on_test_set: bool = False,
     # Advanced model specific parameters
     num_attention_heads: int = 4,
     layer_dropout: float = 0.1,
@@ -66,6 +67,7 @@ def train(
         learning_rate: Learning rate
         num_workers: Number of dataloader workers
         seed: Random seed
+        test_on_test_set: Whether to run testing on held-out test set
         num_attention_heads: Number of attention heads (advanced model only)
         layer_dropout: Layer dropout rate (advanced model only)
         weight_decay: Weight decay for optimizer (advanced model only)
@@ -143,6 +145,7 @@ def train(
     mlflow.log_param("learning_rate", learning_rate)
     mlflow.log_param("seed", seed)
     mlflow.log_param("num_workers", num_workers)
+    mlflow.log_param("test_on_test_set", test_on_test_set)
 
     # Log paper methodology
     mlflow.log_param("scaling_method", "standardization")
@@ -232,18 +235,18 @@ def train(
 
     # Callbacks
     checkpoint_callback = ModelCheckpoint(
-        monitor='val_loss',
+        monitor='val_acc',
         dirpath='checkpoints',
-        filename='bitcoin-lstm-{epoch:02d}-{val_loss:.4f}',
+        filename='bitcoin-lstm-{epoch:02d}-{val_acc:.4f}',
         save_top_k=3,
-        mode='min',
+        mode='max',
         save_last=True
     )
 
     early_stop_callback = EarlyStopping(
-        monitor='val_loss',
+        monitor='val_acc',
         patience=10,
-        mode='min',
+        mode='max',
         verbose=True
     )
 
@@ -269,43 +272,48 @@ def train(
     mlflow.log_param("best_model_path", checkpoint_callback.best_model_path)
     mlflow.log_metric("best_val_loss", checkpoint_callback.best_model_score.item())
 
-    # Test
-    print("\n" + "=" * 80)
-    print("Testing on held-out test set...")
-    print("=" * 80)
-    test_results = trainer.test(model, data_module, ckpt_path='best')
+    # Test (optional)
+    if test_on_test_set:
+        print("\n" + "=" * 80)
+        print("Testing on held-out test set...")
+        print("=" * 80)
+        test_results = trainer.test(model, data_module, ckpt_path='best')
 
-    # Generate classification report
-    print("\n" + "=" * 80)
-    print("Classification Report:")
-    print("=" * 80)
-    target_names = ['Up (0)', 'Neutral (1)', 'Down (2)']
-    report = classification_report(model.test_targets, model.test_predictions,
-                                   target_names=target_names)
-    print(report)
+        # Generate classification report
+        print("\n" + "=" * 80)
+        print("Classification Report:")
+        print("=" * 80)
+        target_names = ['Up (0)', 'Neutral (1)', 'Down (2)']
+        report = classification_report(model.test_targets, model.test_predictions,
+                                       target_names=target_names)
+        print(report)
 
-    # Save classification report as artifact
-    report_path = "classification_report.txt"
-    with open(report_path, 'w') as f:
-        f.write(report)
-    mlflow.log_artifact(report_path)
+        # Save classification report as artifact
+        report_path = "classification_report.txt"
+        with open(report_path, 'w') as f:
+            f.write(report)
+        mlflow.log_artifact(report_path)
 
-    # Generate and log confusion matrix
-    print("\nConfusion Matrix:")
-    print("=" * 80)
-    cm = confusion_matrix(model.test_targets, model.test_predictions)
-    print("Predicted ->")
-    print(f"           Up  Neutral  Down")
-    for i, row in enumerate(cm):
-        print(f"{target_names[i]:8s} {row[0]:5d}  {row[1]:5d}  {row[2]:5d}")
+        # Generate and log confusion matrix
+        print("\nConfusion Matrix:")
+        print("=" * 80)
+        cm = confusion_matrix(model.test_targets, model.test_predictions)
+        print("Predicted ->")
+        print(f"           Up  Neutral  Down")
+        for i, row in enumerate(cm):
+            print(f"{target_names[i]:8s} {row[0]:5d}  {row[1]:5d}  {row[2]:5d}")
 
-    # Save confusion matrix as artifact
-    cm_df = pd.DataFrame(cm,
-                         index=['True Up', 'True Neutral', 'True Down'],
-                         columns=['Pred Up', 'Pred Neutral', 'Pred Down'])
-    cm_path = "confusion_matrix.csv"
-    cm_df.to_csv(cm_path)
-    mlflow.log_artifact(cm_path)
+        # Save confusion matrix as artifact
+        cm_df = pd.DataFrame(cm,
+                             index=['True Up', 'True Neutral', 'True Down'],
+                             columns=['Pred Up', 'Pred Neutral', 'Pred Down'])
+        cm_path = "confusion_matrix.csv"
+        cm_df.to_csv(cm_path)
+        mlflow.log_artifact(cm_path)
+    else:
+        print("\n" + "=" * 80)
+        print("Skipping test set evaluation (test_on_test_set=False)")
+        print("=" * 80)
 
     # Log model to MLflow
     print("\nLogging model to MLflow...")
