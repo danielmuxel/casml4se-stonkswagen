@@ -12,18 +12,21 @@ from massive import RESTClient
 class DataRetriever:
     """Simple data retriever for crypto and stock data"""
 
-    def __init__(self, data_folder: str = "../data/cache/"):
+    def __init__(self, data_folder: str = None):
         # Ensure a stable, absolute data path regardless of current working directory
         # Resolve relative paths against the project root (repo root = two levels up from src)
         this_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(this_dir, "..", ".."))
 
-        if data_folder is None:
-            resolved_folder = os.path.join(project_root, "data")
-        elif os.path.isabs(data_folder):
-            resolved_folder = data_folder
+        # Read from DATA_DIR environment variable first, then fall back to parameter
+        data_folder_to_use = os.getenv("DATA_PATH", data_folder)
+
+        if data_folder_to_use is None:
+            resolved_folder = os.path.join(project_root, "data", "cache")
+        elif os.path.isabs(data_folder_to_use):
+            resolved_folder = os.path.join(data_folder_to_use, "cache")
         else:
-            resolved_folder = os.path.join(project_root, data_folder)
+            resolved_folder = os.path.join(project_root, data_folder_to_use, "cache")
 
         self.data_folder = os.path.normpath(resolved_folder)
         os.makedirs(self.data_folder, exist_ok=True)
