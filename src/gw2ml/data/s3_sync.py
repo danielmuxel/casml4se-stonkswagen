@@ -1,10 +1,13 @@
 # %%
+from __future__ import annotations
+
 import boto3
 import os
 import time
 from pathlib import Path
 from datetime import datetime
 import hashlib
+from typing import Union
 
 def get_s3_client():
     """Initializes and returns a boto3 S3 client from environment variables."""
@@ -76,7 +79,12 @@ def upload_folder_to_s3(local_folder , s3_folder_prefix,  unix_timestamp, bucket
     print(f"{'=' * 50}")
 
 # Download all files from a folder in Hetzner Object Storage
-def download_folder_from_s3(s3_folder_prefix, local_folder, bucket_name="ost-s3", skip_existing=True):
+def download_folder_from_s3(
+    s3_folder_prefix: str,
+    local_folder: Union[str, Path],
+    bucket_name: str = "ost-s3",
+    skip_existing: bool = True,
+) -> Path:
     """
     Download all files from a folder in Hetzner Object Storage to a local folder
 
@@ -87,7 +95,7 @@ def download_folder_from_s3(s3_folder_prefix, local_folder, bucket_name="ost-s3"
         skip_existing: Skip files that already exist with matching ETag (default: True)
     """
     s3_client = get_s3_client()
-    local_path = Path(local_folder)
+    local_path = Path(local_folder).expanduser()
 
     # Create local folder if it doesn't exist
     local_path.mkdir(parents=True, exist_ok=True)
@@ -154,12 +162,15 @@ def download_folder_from_s3(s3_folder_prefix, local_folder, bucket_name="ost-s3"
         print(f"  Downloaded: {downloaded}/{len(files)}")
         print(f"  Skipped: {skipped}/{len(files)}")
         print(f"  Failed: {failed}/{len(files)}")
-        print(f"  Location: {local_folder}")
+        print(f"  Location: {local_path}")
         print(f"  Source: {bucket_name}/{s3_folder_prefix}")
         print(f"{'=' * 50}")
 
     except Exception as e:
         print(f"Error listing objects: {str(e)}")
+        raise
+
+    return local_path
 
 
 # Example usage:
