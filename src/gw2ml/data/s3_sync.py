@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import boto3
 import os
-import time
 from pathlib import Path
 from datetime import datetime
 import hashlib
 from typing import Union
+
+from gw2ml.data.retriever import get_data_path
 
 def get_s3_client():
     """Initializes and returns a boto3 S3 client from environment variables."""
@@ -36,7 +37,7 @@ def upload_folder_to_s3(local_folder , s3_folder_prefix,  unix_timestamp, bucket
     Upload all files from a local folder to Hetzner Object Storage
     """
     s3_client = get_s3_client()
-    local_path = Path(local_folder)
+    local_path = get_data_path(local_folder, ensure_exists=False)
 
     if not local_path.exists():
         print(f"Error: Folder {local_folder} does not exist")
@@ -71,7 +72,7 @@ def upload_folder_to_s3(local_folder , s3_folder_prefix,  unix_timestamp, bucket
             print(f"✗ {file_path.name} - Error: {str(e)}")
 
     print(f"\n{'=' * 50}")
-    print(f"Upload Summary:")
+    print("Upload Summary:")
     print(f"  Uploaded: {uploaded}/{len(files)}")
     print(f"  Failed: {failed}/{len(files)}")
     print(f"  Location: {bucket_name}/{s3_folder_prefix}")
@@ -86,22 +87,22 @@ def download_folder_from_s3(
     skip_existing: bool = True,
 ) -> Path:
     """
-    Download all files from a folder in Hetzner Object Storage to a local folder
+    Download all files from a folder in Hetzner Object Storage to a local folder.
 
     Args:
-        s3_folder_prefix: The S3 folder path (e.g., 'datasources/gw2/raw/1762686861/')
-        local_folder: Local directory to save files to
-        bucket_name: S3 bucket name (default: 'ost-s3')
-        skip_existing: Skip files that already exist with matching ETag (default: True)
+        s3_folder_prefix: The S3 folder path (e.g., 'datasources/gw2/raw/1762686861/').
+        local_folder: Local directory to save files to (absolute or relative to DATA_PATH).
+        bucket_name: S3 bucket name (default: 'ost-s3').
+        skip_existing: Skip files that already exist with matching ETag (default: True).
+
+    Returns:
+        Path to the resolved local folder.
     """
     s3_client = get_s3_client()
-    local_path = Path(local_folder).expanduser()
-
-    # Create local folder if it doesn't exist
-    local_path.mkdir(parents=True, exist_ok=True)
+    local_path = get_data_path(local_folder, ensure_exists=True)
 
     print(f"Source: {bucket_name}/{s3_folder_prefix}")
-    print(f"Target: {local_folder}")
+    print(f"Target: {local_path}")
     print()
 
     downloaded = 0
@@ -117,7 +118,7 @@ def download_folder_from_s3(
 
         if 'Contents' not in response:
             print(f"No files found in {bucket_name}/{s3_folder_prefix}")
-            return
+            return local_path
 
         files = response['Contents']
         print(f"Found {len(files)} files to download")
@@ -158,7 +159,7 @@ def download_folder_from_s3(
                 print(f"✗ {filename} - Error: {str(e)}")
 
         print(f"\n{'=' * 50}")
-        print(f"Download Summary:")
+        print("Download Summary:")
         print(f"  Downloaded: {downloaded}/{len(files)}")
         print(f"  Skipped: {skipped}/{len(files)}")
         print(f"  Failed: {failed}/{len(files)}")

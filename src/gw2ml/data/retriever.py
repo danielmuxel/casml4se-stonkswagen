@@ -1,12 +1,60 @@
 import os
 import time
 from datetime import datetime
+from pathlib import Path
+from typing import Optional, Union
 
 import pandas as pd
 import requests
-import sqlalchemy
 from sqlalchemy import create_engine, text
 from massive import RESTClient
+
+# File lives under src/gw2ml/data/, so parents[3] reaches the repo root
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_DATA_DIR_NAME = "data"
+
+
+def get_data_path(
+    *subpaths: Union[str, os.PathLike, Path],
+    base_path: Optional[Union[str, os.PathLike, Path]] = None,
+    ensure_exists: bool = True,
+) -> Path:
+    """
+    Resolve a path relative to the configured DATA_PATH (supports absolute,
+    relative, and user (~) paths) and optionally append additional subpaths.
+
+    Args:
+        subpaths: Optional additional folders or files appended in order.
+        base_path: Override for DATA_PATH if provided.
+        ensure_exists: Create the resulting directory if it does not exist.
+
+    Returns:
+        Absolute Path object to the resolved location.
+    """
+    if base_path is not None:
+        base_candidate = Path(base_path)
+    else:
+        env_data_path = os.getenv("DATA_PATH")
+        if env_data_path:
+            base_candidate = Path(env_data_path)
+        else:
+            base_candidate = PROJECT_ROOT / DEFAULT_DATA_DIR_NAME
+
+    base_candidate = base_candidate.expanduser()
+    if not base_candidate.is_absolute():
+        base_candidate = PROJECT_ROOT / base_candidate
+
+    resolved = base_candidate
+    for part in subpaths:
+        if part is None:
+            continue
+        part_path = Path(part)
+        resolved = part_path if part_path.is_absolute() else resolved / part_path
+
+    if ensure_exists:
+        resolved.mkdir(parents=True, exist_ok=True)
+
+    return resolved
 
 
 class DataRetriever:
@@ -15,21 +63,9 @@ class DataRetriever:
     def __init__(self, data_folder: str = None):
         # Ensure a stable, absolute data path regardless of current working directory
         # Resolve relative paths against the project root (repo root = two levels up from src)
-        this_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.abspath(os.path.join(this_dir, "..", ".."))
-
-        # Read from DATA_DIR environment variable first, then fall back to parameter
-        data_folder_to_use = os.getenv("DATA_PATH", data_folder)
-
-        if data_folder_to_use is None:
-            resolved_folder = os.path.join(project_root, "data", "cache")
-        elif os.path.isabs(data_folder_to_use):
-            resolved_folder = os.path.join(data_folder_to_use, "cache")
-        else:
-            resolved_folder = os.path.join(project_root, data_folder_to_use, "cache")
-
-        self.data_folder = os.path.normpath(resolved_folder)
-        os.makedirs(self.data_folder, exist_ok=True)
+        # Resolve workspace-aware data paths (handles absolute + relative DATA_PATH)
+        self.data_root = get_data_path(base_path=data_folder)
+        self.data_folder = get_data_path("cache", base_path=self.data_root)
 
         # Binance settings
         self.binance_url = "https://api.binance.com/api/v3/klines"
@@ -122,7 +158,7 @@ class DataRetriever:
         filename = f"{symbol.replace('/', '_')}_{interval if source_upper in ['BINANCE', 'STOCKS'] else 'raw'}_{
         start_time.strftime('%Y%m%d')
         }_{end_time.strftime('%Y%m%d')}.csv"
-        filepath = os.path.join(self.data_folder, filename)
+        filepath = self.data_folder / filename
 
         # Check cache first
         if use_cache and os.path.exists(filepath):
