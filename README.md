@@ -8,10 +8,11 @@ Workspace for exploring Guild Wars 2 trading data, training machine-learning mod
 - `data/` – Raw and intermediate datasets. Keep large or sensitive files out of version control.
 - `docs/` – Reference material, onboarding guides, and database schema notes.
 - `infra/` – Deployment scripts, infrastructure-as-code, and platform configuration.
-- `ml/` – Core Python code: shared utilities, training pipelines, and automated tests.
 - `models/` – Stored model artifacts, evaluation summaries, and metadata for best-performing runs.
 - `notebooks/` – Exploratory Jupyter notebooks and prototype analyses.
 - `scripts/` – Automation helpers such as `init_ml_project.sh` for bootstrapping environments.
+- `src/` – Python packages (e.g., `gw2ml`) that power data access, feature prep, and modeling.
+- `tests/` – Pytest-based integration suites that exercise data exports and pipelines.
 
 ## Working with `uv`
 
@@ -36,6 +37,33 @@ The project uses [`uv`](https://docs.astral.sh/uv/) to manage Python dependencie
 
 > Tip: `scripts/init_ml_project.sh` shows an end-to-end example that installs ML dependencies, registers a Jupyter kernel, and verifies the setup with `uv`.
 
+## Running Tests
+
+The repository now uses a single consolidated uv environment—no nested subprojects required.
+
+### Curated integration suite
+
+Run the registered scenarios listed in `tests/case_registry.py`:
+
+```bash
+uv run python scripts/run_ml_tests.py
+```
+
+Select specific cases by setting `ML_TEST_CASES` (comma-delimited handles from the registry):
+
+```bash
+ML_TEST_CASES=database_export,snapshot_export uv run python scripts/run_ml_tests.py
+```
+
+### Direct pytest use
+
+For ad-hoc development you can drive pytest directly:
+
+```bash
+uv run pytest tests
+```
+
+Some integration tests hit live databases; ensure `DB_URL` (or equivalent env credentials) is configured before running.
 
 ## `initialize_all.sh`
 
