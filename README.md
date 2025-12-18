@@ -73,3 +73,18 @@ Some integration tests hit live databases; ensure `DB_URL` (or equivalent env cr
   ./initialize_all.sh
   ```
 
+## Uploading data to S3
+
+Use `scripts/upload_data_to_s3.py` to send any folder under `DATA_PATH` (configurable via `.env`) to Hetzner object storage.
+
+```bash
+uv run python scripts/upload_data_to_s3.py gw2/raw \
+  --bucket ost-s3 \
+  --workers 8 \
+  --filter-ext .csv,.parquet
+```
+
+- `folder` accepts absolute paths or paths relative to `DATA_PATH` (which defaults to `data/` at the repo root).
+- The script automatically loads `.env`, resolves relative paths against the project root, and preserves subfolder structure in S3.
+- Customize the destination with `--prefix` or `--timestamp`, preview uploads with `--dry-run`, and increase throughput via `--workers`.
+

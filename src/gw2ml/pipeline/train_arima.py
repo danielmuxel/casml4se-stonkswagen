@@ -1,122 +1,144 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
 
-from gw2ml.data import DatabaseClient, get_items, get_prices
+from gw2ml.modeling import MedianPriceModel, persist_model
+from gw2ml.pipeline.data_preparation import (
+    DatasetMeta,
+    build_pipeline_context,
+    load_latest_validation,
+    load_training_snapshot,
+)
+from gw2ml.pipeline.feature_hooks import apply_augmentors
 from gw2ml.paths import PROJECT_ROOT
 
 
-# Populate this list with item ids you want to fetch.
-# Leave it empty (or comment out entries) to export every tradeable item.
-TARGET_ITEM_IDS: list[int] = [
-    # 19702,
-    # 19721,
-]
+@dataclass(slots=True)
+class TrainArimaConfig:
+    """Configuration payload controlling the training pipeline."""
 
-# Adjust the number of parallel workers. Increase cautiously to avoid overloading the DB.
-MAX_WORKERS = 8
-
-TRAIN_DIR = PROJECT_ROOT / "data" / "train_arima"
-
-
-def _ensure_output_dir() -> Path:
-    TRAIN_DIR.mkdir(parents=True, exist_ok=True)
-    return TRAIN_DIR
+    model_key: str = "arima"
+    run_date: datetime = field(default_factory=lambda: datetime.now(UTC))
+    item_ids: tuple[int, ...] | None = None
+    snapshot_grace_minutes: int = 4
+    validation_lookback_days: int = 30
+    rows_per_item: int = 2000
+    target_column: str = "sell_unit_price"
+    output_dir: Path = PROJECT_ROOT / "data" / "train_arima"
+    connection_url: str | None = None
 
 
-def _build_output_path(item_id: int, timestamp: datetime) -> Path:
-    slug = timestamp.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
-    filename = f"prices_{item_id}_{slug}.csv"
-    return _ensure_output_dir() / filename
+@dataclass(slots=True)
+class TrainArimaArtifacts:
+    train_path: Path
+    validation_path: Path
+    model_path: Path
+    metadata: dict[str, DatasetMeta | dict[str, float]]
 
 
-def _fetch_full_price_history(client: DatabaseClient, item_id: int) -> pd.DataFrame:
-    df = get_prices(
-        client,
-        item_id=item_id,
-        order="ASC",
+def _ensure_output_dir(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _export_dataframe(df: pd.DataFrame, path: Path) -> Path:
+    df.to_csv(path, index=False)
+    return path
+
+
+def _resolve_validation_ids(train_df: pd.DataFrame, explicit_ids: Iterable[int] | None) -> list[int]:
+    if explicit_ids:
+        return sorted({int(item_id) for item_id in explicit_ids})
+    if "item_id" not in train_df.columns:
+        return []
+    return sorted(train_df["item_id"].dropna().astype(int).unique().tolist())
+
+
+def _mean_absolute_error(actuals: pd.Series, predictions: pd.Series) -> float:
+    if actuals.empty:
+        return 0.0
+    return float((actuals - predictions).abs().mean())
+
+
+def _mean_absolute_percentage_error(actuals: pd.Series, predictions: pd.Series) -> float:
+    safe_actuals = actuals.replace(0, pd.NA).dropna()
+    aligned_predictions = predictions.loc[safe_actuals.index]
+    if safe_actuals.empty:
+        return 0.0
+    percentage_errors = ((safe_actuals - aligned_predictions).abs() / safe_actuals).dropna()
+    if percentage_errors.empty:
+        return 0.0
+    return float(percentage_errors.mean() * 100)
+
+
+def run(config: TrainArimaConfig | None = None) -> TrainArimaArtifacts:
+    """Execute the ARIMA training pipeline."""
+    cfg = config or TrainArimaConfig()
+    context = build_pipeline_context(
+        cfg.model_key,
+        run_date=cfg.run_date,
+        connection_url=cfg.connection_url,
+        lookback_days=cfg.validation_lookback_days,
     )
-    if df.empty:
-        message = f"No price records found for item_id={item_id}."
-        raise RuntimeError(message)
-    return df
+
+    train_df, train_meta = load_training_snapshot(
+        context,
+        item_ids=cfg.item_ids,
+        grace_minutes=cfg.snapshot_grace_minutes,
+    )
+    validation_ids = _resolve_validation_ids(train_df, cfg.item_ids)
+    val_df, val_meta = load_latest_validation(
+        context,
+        item_ids=validation_ids or None,
+        lookback_days=cfg.validation_lookback_days,
+        rows_per_item=cfg.rows_per_item,
+    )
+
+    train_df = apply_augmentors(train_df, context, "training")
+    val_df = apply_augmentors(val_df, context, "validation")
+
+    model = MedianPriceModel(value_column=cfg.target_column).fit(train_df)
+
+    evaluated_validation = val_df.dropna(subset=[cfg.target_column])
+    predictions = model.predict(evaluated_validation)
+    actuals = evaluated_validation[cfg.target_column].astype(float)
+    metrics = {
+        "mae": _mean_absolute_error(actuals, predictions),
+        "mape": _mean_absolute_percentage_error(actuals, predictions),
+        "validation_rows": int(len(evaluated_validation)),
+    }
+
+    artifact_dir = _ensure_output_dir(cfg.output_dir)
+    slug = context.run_date.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+    train_path = _export_dataframe(train_df, artifact_dir / f"{cfg.model_key}_train_{slug}.csv")
+    validation_path = _export_dataframe(val_df, artifact_dir / f"{cfg.model_key}_validation_{slug}.csv")
+    model_path = persist_model(model, model_key=cfg.model_key, run_date=context.run_date)
+
+    metadata = {"training": train_meta, "validation": val_meta, "metrics": metrics}
+    return TrainArimaArtifacts(
+        train_path=train_path,
+        validation_path=validation_path,
+        model_path=model_path,
+        metadata=metadata,
+    )
 
 
-def _fetch_all_tradeable_item_ids(client: DatabaseClient, page_size: int = 1000) -> list[int]:
-    collected: list[int] = []
-    offset = 0
-    while True:
-        items_df = get_items(client, limit=page_size, offset=offset)
-        if items_df.empty:
-            break
-        collected.extend(items_df["id"].astype(int).tolist())
-        offset += page_size
-    return sorted(set(collected))
-
-
-def _resolve_item_ids(client: DatabaseClient, overrides: Iterable[int] | None) -> list[int]:
-    if overrides:
-        return sorted({int(item_id) for item_id in overrides})
-    return _fetch_all_tradeable_item_ids(client)
-
-
-def _dispose_client(client: DatabaseClient) -> None:
-    engine = getattr(client, "_engine", None)
-    if engine is not None:
-        engine.dispose()
-
-
-def _export_single_item(connection_url: str, item_id: int, snapshot_time: datetime) -> Path:
-    client = DatabaseClient(connection_url=connection_url)
-    try:
-        df = _fetch_full_price_history(client, item_id)
-        output_path = _build_output_path(item_id, snapshot_time)
-        df.to_csv(output_path, index=False)
-        return output_path
-    finally:
-        _dispose_client(client)
-
-
-def run(item_ids: Iterable[int] | None = None, max_workers: int | None = None) -> list[Path]:
-    primary_client = DatabaseClient.from_env()
-    snapshot_time = datetime.now(UTC)
-    ids = _resolve_item_ids(primary_client, item_ids or TARGET_ITEM_IDS)
-    if not ids:
-        raise RuntimeError("No item ids resolved; populate TARGET_ITEM_IDS or ensure the database has tradeable items.")
-
-    connection_url = primary_client.connection_url
-    worker_count = max(1, max_workers or MAX_WORKERS)
-
-    outputs: list[Path] = []
-    executor = ThreadPoolExecutor(max_workers=worker_count)
-    futures = {executor.submit(_export_single_item, connection_url, item_id, snapshot_time): item_id for item_id in ids}
-    try:
-        for future in as_completed(futures):
-            item_id = futures[future]
-            try:
-                path = future.result()
-                outputs.append(path)
-            except Exception as exc:
-                message = f"Failed to export item_id={item_id}: {exc}"
-                raise RuntimeError(message) from exc
-    except KeyboardInterrupt:
-        for future in futures:
-            future.cancel()
-        raise
-    finally:
-        executor.shutdown(wait=True, cancel_futures=True)
-        _dispose_client(primary_client)
-
-    return sorted(outputs, key=lambda p: p.name)
+def _print_summary(artifacts: TrainArimaArtifacts) -> None:
+    metrics = artifacts.metadata.get("metrics", {})
+    mae = metrics.get("mae", 0.0)
+    mape = metrics.get("mape", 0.0)
+    print(f"Saved training set to {artifacts.train_path}")
+    print(f"Saved validation set to {artifacts.validation_path}")
+    print(f"Persisted model artifact to {artifacts.model_path}")
+    print(f"Metrics -> MAE: {mae:.2f}, MAPE: {mape:.2f}%")
 
 
 if __name__ == "__main__":
-    export_paths = run()
-    for path in export_paths:
-        print(f"Exported ARIMA training snapshot to {path}")
+    summary = run()
+    _print_summary(summary)
 

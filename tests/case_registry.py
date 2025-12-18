@@ -11,6 +11,8 @@ from __future__ import annotations
 TEST_CASES: dict[str, str] = {
     "database_export": "tests/test_database.py::test_fetch_and_export_real_tables",
     "snapshot_export": "tests/test_database.py::test_fetch_prices_snapshot_and_export",
+    "feature_hooks": "tests/test_feature_hooks.py::test_apply_augmentors_runs_in_registration_order",
+    "model_registry": "tests/test_model_registry.py::test_persist_and_load_model",
 }
 
 
