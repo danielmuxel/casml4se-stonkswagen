@@ -153,6 +153,94 @@ def get_prices(
     return df.reset_index(drop=True)
 
 
+def get_prices_snapshot(
+    connection: ConnectionInput,
+    target_time: datetime,
+    *,
+    grace_minutes: int = 4,
+    item_ids: Iterable[int] | None = None,
+) -> pd.DataFrame:
+    """
+    Retrieve the latest price row per item at a specific timestamp window.
+    """
+
+    client = _ensure_client(connection)
+    normalized_target = _normalize_datetime(target_time)
+    upper_bound = normalized_target + timedelta(minutes=int(grace_minutes))
+
+    params: dict[str, object] = {"upper_bound": upper_bound}
+    where_clauses = ["COALESCE(fetched_at, created_at) <= :upper_bound"]
+
+    filtered_ids: list[int] | None = None
+    if item_ids is not None:
+        filtered_ids = sorted({int(item_id) for item_id in item_ids})
+        if not filtered_ids:
+            return pd.DataFrame(
+                columns=[
+                    "id",
+                    "item_id",
+                    "whitelisted",
+                    "buy_quantity",
+                    "buy_unit_price",
+                    "sell_quantity",
+                    "sell_unit_price",
+                    "fetched_at",
+                    "created_at",
+                ]
+            )
+        params["item_ids"] = filtered_ids
+        where_clauses.append("item_id IN :item_ids")
+
+    sql = """
+    WITH ranked_prices AS (
+        SELECT
+            id,
+            item_id,
+            whitelisted,
+            buy_quantity,
+            buy_unit_price,
+            sell_quantity,
+            sell_unit_price,
+            fetched_at,
+            created_at,
+            ROW_NUMBER() OVER (
+                PARTITION BY item_id
+                ORDER BY COALESCE(fetched_at, created_at) DESC, id DESC
+            ) AS row_rank
+        FROM prices
+        WHERE {where_clause}
+    )
+    SELECT
+        id,
+        item_id,
+        whitelisted,
+        buy_quantity,
+        buy_unit_price,
+        sell_quantity,
+        sell_unit_price,
+        fetched_at,
+        created_at
+    FROM ranked_prices
+    WHERE row_rank = 1
+    ORDER BY item_id ASC
+    """.format(
+        where_clause=" AND ".join(where_clauses),
+    )
+
+    query = text(sql)
+    if filtered_ids is not None:
+        query = query.bindparams(bindparam("item_ids", expanding=True))
+
+    with client.engine.begin() as conn:
+        df = pd.read_sql(query, conn, params=params)
+
+    for column in ("fetched_at", "created_at"):
+        if column in df.columns:
+            df[column] = pd.to_datetime(df[column], errors="coerce", utc=True)
+    df = df.dropna(subset=["fetched_at", "created_at"], how="all")
+    return df.reset_index(drop=True)
+
+
 def get_items(
     connection: ConnectionInput,
     search: str | None = None,
@@ -389,6 +477,7 @@ def get_tp_history(
 
 __all__ = [
     "get_prices",
+    "get_prices_snapshot",
     "get_items",
     "get_item_count",
     "get_generic_rows",

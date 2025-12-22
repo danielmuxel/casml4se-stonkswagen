@@ -31,3 +31,20 @@ history_df = database.get_generic_rows(
 
 Instantiate the client once when your application starts and pass it around instead of repeatedly opening new engines.
 
+## Pipeline building blocks
+
+- `pipeline/data_preparation.py` exposes `PipelineContext`, `load_training_snapshot`, and `load_latest_validation`. Pipelines request deterministic training snapshots (point-in-time) together with a rolling validation slice that always targets the freshest data.
+- `pipeline/feature_hooks.py` keeps optional augmentors organized per phase (`training`, `validation`, `inference`). Register a callable with `register_augmentor("training", hook)` and the pipeline will apply it automatically when assembling datasets.
+- `pipeline/train_arima.py` shows the expected orchestration flow: build a context, download training + validation data, run optional augmentors, fit a model, evaluate, and persist artifacts (datasets + serialized model).
+
+## Serving surfaces
+
+Serving endpoints live under `gw2ml/serving/<model>/`. Each module mounts a FastAPI router and mirrors the feature hooks from training (using the `inference` phase). The ARIMA example demonstrates how to:
+
+1. Load the latest approved artifact via `gw2ml.modeling.load_model`.
+2. Fetch fresh validation rows on-demand if the caller requests `fetch_latest`.
+3. Apply inference augmentors before generating predictions.
+4. Return both predictions and lightweight metadata (item id, timestamp).
+
+Promote any future model by copying this pattern and wiring its router into the hosting application.
+
