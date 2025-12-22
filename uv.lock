@@ -352,6 +352,10 @@ wheels = [
 name = "casml4se-stonkswagen"
 version = "0.1.0"
 source = { editable = "." }
+dependencies = [
+    { name = "networkx" },
+    { name = "scikit-learn" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -375,10 +379,15 @@ dev = [
     { name = "python-dotenv" },
     { name = "sqlalchemy" },
     { name = "statsforecast" },
+    { name = "tqdm" },
     { name = "xgboost" },
 ]
 
 [package.metadata]
+requires-dist = [
+    { name = "networkx", specifier = ">=3.6" },
+    { name = "scikit-learn", specifier = ">=1.7.2" },
+]
 
 [package.metadata.requires-dev]
 dev = [
@@ -402,6 +411,7 @@ dev = [
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "sqlalchemy", specifier = ">=2.0.44" },
     { name = "statsforecast", specifier = ">=2.0.3" },
+    { name = "tqdm", specifier = ">=4.66.0" },
     { name = "xgboost", specifier = ">=3.1.2" },
 ]
 
