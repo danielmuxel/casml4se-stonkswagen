@@ -93,7 +93,7 @@ class TestExponentialSmoothingModelInstantiation:
 
     def test_seasonal_without_periods_raises(self) -> None:
         """Error is raised if seasonal is set without seasonal_periods."""
-        with pytest.raises(ValueError, match="seasonal_periods must be specified"):
+        with pytest.raises(ValueError, match="seasonal_periods required"):
             ExponentialSmoothingModel(seasonal="add")
 
     def test_name_property(self) -> None:

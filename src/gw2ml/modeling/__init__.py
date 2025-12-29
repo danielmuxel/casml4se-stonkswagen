@@ -28,7 +28,7 @@ Example:
 from .base import BaseModel
 from .arima import ARIMAModel
 from .exponential_smoothing import ExponentialSmoothingModel
-from .xgboost_model import XGBoostModel
+from .xgboost import XGBoostModel
 
 __all__ = [
     "BaseModel",

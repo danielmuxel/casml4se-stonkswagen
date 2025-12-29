@@ -1,5 +1,5 @@
 """
-Tests for the gw2ml.modeling.xgboost_model module.
+Tests for the gw2ml.modeling.xgboost module.
 
 These tests cover:
 - XGBoostModel instantiation and configuration
