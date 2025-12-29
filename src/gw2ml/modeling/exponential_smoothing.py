@@ -44,7 +44,8 @@ class ExponentialSmoothingModel(BaseModel):
         seasonal_periods: Optional[int] = None,
         **kwargs: Any,
     ) -> None:
-        if seasonal is not None and seasonal_periods is None:
+        # Only require seasonal_periods if seasonal is explicitly set to a value other than None
+        if seasonal is not None and seasonal != "None" and seasonal_periods is None:
             raise ValueError("seasonal_periods required when seasonal is set")
 
         self.params: Dict[str, Any] = {

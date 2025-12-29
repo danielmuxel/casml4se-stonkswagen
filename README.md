@@ -37,6 +37,21 @@ The project uses [`uv`](https://docs.astral.sh/uv/) to manage Python dependencie
 > Tip: `scripts/init_ml_project.sh` shows an end-to-end example that installs ML dependencies, registers a Jupyter kernel, and verifies the setup with `uv`.
 
 
+## Training/Forecast Entry Points
+
+Run inside the repo root (uses `uv`):
+
+- API (dev hot-reload):  
+  `uv run fastapi dev apps/api/main.py --host 0.0.0.0 --port 8000`
+
+- API (uvicorn):  
+  `uv run uvicorn apps.api.main:app --host 0.0.0.0 --port 8000`
+
+- Streamlit UI:  
+  `uv run streamlit run apps/streamlit/forecast_app.py`
+
+These entry points wrap the existing `train_items` and `forecast_item` functions. Configuration exposed in the UI/API allows setting item_ids, days_back, value_column, horizon, models, and metrics; DB and S3 settings are intentionally excluded from the UI/API surface (the pipelines still rely on environment-based DB connection as before).
+
 ## `initialize_all.sh`
 
 - Runs `uv sync` for every `pyproject.toml` discovered in the repository, keeping all Python projects aligned with their dependency manifests.

@@ -46,12 +46,18 @@ class ARIMAModel(BaseModel):
         }
         self._model: Optional[ARIMA] = None
 
+    def _normalize_seasonal(self, seasonal_order: Optional[Tuple[int, int, int, int]]) -> Tuple[int, int, int, int]:
+        """Statsmodels expects a tuple; None should become (0, 0, 0, 0)."""
+        if seasonal_order is None:
+            return (0, 0, 0, 0)
+        return seasonal_order
+
     def build_model(self, **kwargs: Any) -> ARIMA:
         build_params = {**self.params, **kwargs}
         p = build_params.pop("p")
         d = build_params.pop("d")
         q = build_params.pop("q")
-        seasonal_order = build_params.pop("seasonal_order", None)
+        seasonal_order = self._normalize_seasonal(build_params.pop("seasonal_order", None))
         return ARIMA(p=p, d=d, q=q, seasonal_order=seasonal_order, **build_params)
 
     def fit(self, series: TimeSeries, **kwargs: Any) -> "ARIMAModel":

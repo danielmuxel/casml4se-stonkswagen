@@ -28,7 +28,7 @@ from .database_queries import get_items, get_prices
 # CACHE
 # ══════════════════════════════════════════════════════════════════════════════
 
-_cache: dict[tuple[int, int, str], "GW2Series"] = {}
+_cache: dict[tuple[int, int, str, bool], "GW2Series"] = {}
 
 
 def clear_cache() -> None:
@@ -224,6 +224,7 @@ def _df_to_series(
     time_col: str = "fetched_at",
     value_col: str = "buy_unit_price",
     freq: str = "5min",
+    fill_missing_dates: bool = True,
 ) -> TimeSeries:
     """
     Convert a DataFrame to a Darts TimeSeries.
@@ -236,6 +237,7 @@ def _df_to_series(
         time_col: Name of the time column
         value_col: Name of the value column
         freq: Expected frequency of the data (default: "5min" for GW2 data)
+        fill_missing_dates: Whether to interpolate missing dates (default: True)
     """
     df = df.copy()
 
@@ -260,14 +262,31 @@ def _df_to_series(
     df = df[[value_col]]
 
     # Create TimeSeries with explicit frequency
-    # GW2 data is collected every 5 minutes, so we use "5min" as the frequency
-    # fill_missing_dates=True will interpolate any missing data points
-    return TimeSeries.from_dataframe(
-        df,
-        value_cols=[value_col],
-        fill_missing_dates=True,
-        freq=freq,
-    )
+    # GW2 data is collected every 5 minutes, so we use "5min" as the frequency.
+    # NOTE: Even with fill_missing_dates=False, Darts may require a known `freq`
+    # when it cannot infer it from an irregular/gappy index.
+
+    # If fill_missing_dates is True, we need to handle NaN values for ML models like XGBoost
+    # First pass: create TimeSeries with NaN for missing dates
+    kwargs = {
+        "df": df,
+        "value_cols": [value_col],
+        "fill_missing_dates": fill_missing_dates,
+        "freq": freq,
+    }
+
+    ts = TimeSeries.from_dataframe(**kwargs)
+
+    # If fill_missing_dates is True, fill NaN values using pandas operations
+    if fill_missing_dates:
+        # Convert to pandas, fill NaNs, convert back to TimeSeries
+        ts_df = ts.to_dataframe()
+        # Forward fill then backward fill to handle all NaNs
+        ts_df = ts_df.ffill().bfill()
+        # Recreate TimeSeries from cleaned dataframe
+        ts = TimeSeries.from_dataframe(ts_df, value_cols=[value_col], freq=freq)
+
+    return ts
 
 
 def _get_item_name(client: DatabaseClient, item_id: int) -> Optional[str]:
@@ -291,6 +310,7 @@ def load_gw2_series(
     days_back: int = 30,
     value_column: str = "buy_unit_price",
     use_cache: bool = True,
+    fill_missing_dates: bool = True,
 ) -> GW2Series:
     """
     Load GW2 price data for a single item.
@@ -300,6 +320,7 @@ def load_gw2_series(
         days_back: Number of days to load
         value_column: "buy_unit_price" or "sell_unit_price"
         use_cache: Whether to use cached data (default: True)
+        fill_missing_dates: Whether to interpolate missing dates (default: True)
 
     Returns:
         GW2Series with TimeSeries and metadata
@@ -312,7 +333,9 @@ def load_gw2_series(
         >>> print(data.info())
         >>> train, test = data.split(train=0.8)
     """
-    cache_key = (item_id, days_back, value_column)
+    # NOTE: fill_missing_dates materially changes the resulting TimeSeries index,
+    # so it must be part of the cache key.
+    cache_key = (item_id, days_back, value_column, fill_missing_dates)
 
     # Check cache
     if use_cache and cache_key in _cache:
@@ -329,7 +352,7 @@ def load_gw2_series(
         )
 
     # Convert to TimeSeries
-    series = _df_to_series(df, value_col=value_column)
+    series = _df_to_series(df, value_col=value_column, fill_missing_dates=fill_missing_dates)
 
     # Get item name
     item_name = _get_item_name(client, item_id)
@@ -372,6 +395,7 @@ def load_gw2_series_batch(
     days_back: int = 30,
     value_column: str = "buy_unit_price",
     use_cache: bool = True,
+    fill_missing_dates: bool = True,
 ) -> dict[int, GW2Series]:
     """
     Load GW2 price data for multiple items.
@@ -381,6 +405,7 @@ def load_gw2_series_batch(
         days_back: Number of days to load (same for all items)
         value_column: "buy_unit_price" or "sell_unit_price"
         use_cache: Whether to use cached data
+        fill_missing_dates: Whether to interpolate missing dates (default: True)
 
     Returns:
         Dict mapping item_id to GW2Series
@@ -401,6 +426,7 @@ def load_gw2_series_batch(
                 days_back=days_back,
                 value_column=value_column,
                 use_cache=use_cache,
+                fill_missing_dates=fill_missing_dates,
             )
         except ValueError as e:
             # Skip items with no data, but print warning
@@ -420,6 +446,7 @@ def load_and_split(
     train: float = 0.8,
     val: Optional[float] = None,
     value_column: str = "buy_unit_price",
+    fill_missing_dates: bool = True,
 ) -> tuple[TimeSeries, ...]:
     """
     Load data and split by ratio in one step.
@@ -430,6 +457,7 @@ def load_and_split(
         train: Ratio for training set
         val: Ratio for validation set (None = 2-way split)
         value_column: "buy_unit_price" or "sell_unit_price"
+        fill_missing_dates: Whether to interpolate missing dates (default: True)
 
     Returns:
         (train, test) if val is None
@@ -439,7 +467,7 @@ def load_and_split(
         >>> train, test = load_and_split(19697, train=0.8)
         >>> train, val, test = load_and_split(19697, train=0.7, val=0.15)
     """
-    data = load_gw2_series(item_id, days_back, value_column)
+    data = load_gw2_series(item_id, days_back, value_column, fill_missing_dates=fill_missing_dates)
     return data.split(train=train, val=val)
 
 
@@ -449,6 +477,7 @@ def load_and_split_days(
     test_days: int = 7,
     val_days: Optional[int] = None,
     value_column: str = "buy_unit_price",
+    fill_missing_dates: bool = True,
 ) -> tuple[TimeSeries, ...]:
     """
     Load data and split by days in one step.
@@ -459,6 +488,7 @@ def load_and_split_days(
         test_days: Days for test set (from the end)
         val_days: Days for validation set (None = 2-way split)
         value_column: "buy_unit_price" or "sell_unit_price"
+        fill_missing_dates: Whether to interpolate missing dates (default: True)
 
     Returns:
         (train, test) if val_days is None
@@ -470,7 +500,7 @@ def load_and_split_days(
         ...     19697, days_back=30, test_days=7, val_days=3
         ... )
     """
-    data = load_gw2_series(item_id, days_back, value_column)
+    data = load_gw2_series(item_id, days_back, value_column, fill_missing_dates=fill_missing_dates)
     return data.split_days(test_days=test_days, val_days=val_days)
 
 
