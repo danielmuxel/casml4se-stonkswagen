@@ -5,6 +5,7 @@ import streamlit as st
 import plotly.express as px
 import seaborn as sns
 from gw2ml.data.loaders import list_items, load_gw2_series_batch
+from gw2ml.evaluation.adf import perform_adf_test
 
 @st.cache_data(ttl=3600)
 def cached_list_items(limit: int = 30000):
@@ -38,6 +39,7 @@ def render_item_analysis_tab() -> None:
         )
         show_history = st.checkbox("Show history graph", value=False)
         show_distribution = st.checkbox("Show distribution (box plot)", value=False)
+        show_adf = st.checkbox("Augmented Dickey Fuller", value=False)
         st.info("Configure item analysis parameters here")
 
     st.subheader("Item Analysis")
@@ -72,6 +74,9 @@ def render_item_analysis_tab() -> None:
         
         if show_distribution:
             render_distribution_analysis(selected_items, history_days)
+        
+        if show_adf:
+            render_adf_analysis(selected_items, history_days)
 
 
 @st.cache_data(ttl=3600)
@@ -207,6 +212,64 @@ def render_distribution_analysis(selected_items: list[dict], days_back: int) -> 
             else:
                 st.info(f"No data available for {item_name}")
 
+
+def render_adf_analysis(selected_items: list[dict], days_back: int) -> None:
+    """Render Augmented Dickey-Fuller test results for selected items."""
+    st.write("---")
+    st.subheader("Stationarity Analysis (Augmented Dickey-Fuller Test)")
+
+    cols = available_history_columns()
+    selected_col = st.selectbox("Select metric for ADF test", options=cols, index=2, key="adf_metric_select")
+
+    item_ids = tuple(item["item_id"] for item in selected_items)
+
+    with st.spinner("Performing ADF tests..."):
+        batch_data = cached_load_gw2_series_batch(
+            item_ids=item_ids,
+            days_back=days_back,
+            value_column=selected_col
+        )
+
+    if not batch_data:
+        st.warning("No historical data found for the selected items.")
+        return
+
+    results = []
+    for item_id, gw2_series in batch_data.items():
+        item_name = gw2_series.item_name or str(item_id)
+        # Convert Darts TimeSeries to pandas Series
+        series = gw2_series.series.to_series()
+        
+        adf_res = perform_adf_test(series)
+        
+        if "error" in adf_res:
+            results.append({
+                "Item": item_name,
+                "Status": "Error",
+                "Details": adf_res["error"]
+            })
+        else:
+            results.append({
+                "Item": item_name,
+                "Stationary": "✅ Yes" if adf_res["is_stationary"] else "❌ No",
+                "P-Value": f"{adf_res['p_value']:.4f}",
+                "ADF Statistic": f"{adf_res['adf_statistic']:.4f}",
+                "Lags Used": adf_res["used_lag"],
+                "Observations": adf_res["n_obs"]
+            })
+
+    if results:
+        st.table(pd.DataFrame(results))
+        
+        with st.expander("About Augmented Dickey-Fuller Test"):
+            st.write("""
+            The Augmented Dickey-Fuller (ADF) test is a common statistical test used to determine whether a given time series is stationary or not. 
+            
+            - **Stationary series**: Has constant mean, variance, and autocorrelation over time. Most time series models (like ARIMA) require the data to be stationary.
+            - **Null Hypothesis (H0)**: The series has a unit root (is non-stationary).
+            - **Alternative Hypothesis (H1)**: The series is stationary.
+            - **Interpretation**: If the P-Value is less than 0.05, we reject the null hypothesis and conclude the series is likely stationary.
+            """)
 
 
 def main() -> None:
