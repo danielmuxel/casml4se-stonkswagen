@@ -504,6 +504,29 @@ def load_and_split_days(
     return data.split_days(test_days=test_days, val_days=val_days)
 
 
+def list_items(search: str | None = None, limit: int = 100) -> list[dict[str, str]]:
+    """
+    List items from the database.
+
+    Args:
+        search: Optional search string (fuzzy search on name or ID)
+        limit: Maximum number of items to return
+
+    Returns:
+        List of dictionaries with item_id and item_name
+    """
+    client = _get_db_client()
+    df = get_items(client, search=search, limit=limit)
+    
+    items = []
+    for _, row in df.iterrows():
+        items.append({
+            "item_id": str(row["id"]),
+            "item_name": str(row["name"])
+        })
+    return items
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # EXPORTS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -514,6 +537,7 @@ __all__ = [
     "load_gw2_series_batch",
     "load_and_split",
     "load_and_split_days",
+    "list_items",
     "clear_cache",
     "get_cache_info",
 ]

@@ -6,6 +6,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from gw2ml.data.loaders import list_items
 from gw2ml.modeling.registry import list_models
 from gw2ml.pipelines.config import DEFAULT_CONFIG, merge_config
 from gw2ml.pipelines.forecast import forecast_item
@@ -45,8 +46,8 @@ def _build_override_config(
     return {"item_ids": item_ids, "config": _sanitize_config(override)}
 
 
-def main() -> None:
-    st.set_page_config(page_title="GW2ML Train & Forecast", layout="wide")
+def render_forecast_tab() -> None:
+    """Render the forecast tab content."""
     st.title("GW2ML: Train & Forecast")
 
     with st.sidebar:
@@ -168,6 +169,11 @@ def main() -> None:
             st.exception(exc)
 
 
+def main() -> None:
+    """Main entry point when running forecast_app.py standalone."""
+    st.set_page_config(page_title="GW2ML Train & Forecast", layout="wide")
+    render_forecast_tab()
+
+
 if __name__ == "__main__":
     main()
-
