@@ -11,18 +11,16 @@ def main() -> None:
     """Main entry point for the GW2ML Streamlit application with tabs."""
     st.set_page_config(page_title="GW2ML Application", layout="wide")
     
+    st.sidebar.title("Navigation")
+    selection = st.sidebar.radio("Go to", ["📈 Forecast", "🔍 Item Analysis", "🤖 Pretrained Models"])
+
     st.header("🎮 GW2ML: Guild Wars 2 Trading Post Analysis")
     
-    # Create tabs
-    tab1, tab2, tab3 = st.tabs(["📈 Forecast", "🔍 Item Analysis", "🤖 Pretrained Models"])
-    
-    with tab1:
+    if selection == "📈 Forecast":
         render_forecast_tab()
-    
-    with tab2:
+    elif selection == "🔍 Item Analysis":
         render_item_analysis_tab()
-
-    with tab3:
+    elif selection == "🤖 Pretrained Models":
         render_pretrained_models_tab()
 
 
