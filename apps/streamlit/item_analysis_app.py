@@ -7,17 +7,31 @@ import seaborn as sns
 from gw2ml.data.loaders import list_items, load_gw2_series_batch
 from gw2ml.evaluation.adf import perform_adf_test
 
-@st.cache_data(ttl=3600)
+CACHE_TIMEOUT = 60 * 60 * 24 * 7  # 7 days in seconds
+
+@st.cache_data(ttl=CACHE_TIMEOUT, persist="disk", show_spinner=True,show_time=True)
 def cached_list_items(limit: int = 30000):
     return list_items(limit=limit)
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=CACHE_TIMEOUT, persist="disk", show_spinner=True,show_time=True)
 def available_history_columns(limit: int = 30):
     #TODO:  should ideally be taken from db
     # Another note: does this matter at the moment because we need to retrieve everything anyways?
     # Currently only mattters for what to show. 
     return ["buy_quantity", "sell_quantity","buy_unit_price", "sell_unit_price"]
 
+@st.cache_data(ttl=CACHE_TIMEOUT, show_spinner=False)
+def cached_perform_adf_test(series: pd.Series) -> dict:
+    """Cache the ADF test results to prevent re-calculation on UI changes."""
+    return perform_adf_test(series)
+
+@st.cache_data(ttl=CACHE_TIMEOUT, persist="disk", show_spinner=True,show_time=True)
+def cached_load_gw2_series_batch(item_ids, days_back, value_column):
+    return load_gw2_series_batch(
+        item_ids=list(item_ids),  # streamlit cache needs hashable types
+        days_back=days_back,
+        value_column=value_column
+    )
 
 def render_item_analysis_tab() -> None:
     """Render the item analysis tab content."""
@@ -29,18 +43,22 @@ def render_item_analysis_tab() -> None:
             min_value=1,
             max_value=365,
             value=30,
-            help="Select the number of days of historical data to display"
+            help="History Data Load N Days Back"
         )
         resample_rule = st.selectbox(
             "Resample Interval",
             options=["5min", "15min", "1h", "4h", "12h", "1d"],
             index=2,
-            help="5T=5min, 1H=1hour, 1D=1day. Reducing frequency improves performance."
+            help="Reducing frequency improves performance, OInly used for Hisotry Plot. ADF etc will still use all data within histroy range."
         )
         show_history = st.checkbox("Show history graph", value=False)
         show_distribution = st.checkbox("Show distribution (box plot)", value=False)
         show_adf = st.checkbox("Augmented Dickey Fuller", value=False)
         st.info("Configure item analysis parameters here")
+
+        if st.button("Clear Cache", use_container_width=True):
+            st.cache_data.clear()
+            st.success("Cache cleared!")
 
     st.subheader("Item Analysis")
 
@@ -71,21 +89,15 @@ def render_item_analysis_tab() -> None:
     if selected_items:
         if show_history:
             render_history_graph(selected_items, history_days, resample_rule)
-        
-        if show_distribution:
-            render_distribution_analysis(selected_items, history_days)
-        
+
         if show_adf:
             render_adf_analysis(selected_items, history_days)
 
+        if show_distribution:
+            render_distribution_analysis(selected_items, history_days)
 
-@st.cache_data(ttl=3600)
-def cached_load_gw2_series_batch(item_ids, days_back, value_column):
-    return load_gw2_series_batch(
-        item_ids=list(item_ids),  # streamlit cache needs hashable types
-        days_back=days_back,
-        value_column=value_column
-    )
+
+
 
 
 def render_history_graph(selected_items: list[dict], days_back: int, resample_rule: str = "1H") -> None:
@@ -234,34 +246,41 @@ def render_adf_analysis(selected_items: list[dict], days_back: int) -> None:
         st.warning("No historical data found for the selected items.")
         return
 
-    results = []
+        # Create an empty placeholder for the table
+    results_table = st.empty()
+    all_results = []
+
     for item_id, gw2_series in batch_data.items():
         item_name = gw2_series.item_name or str(item_id)
         # Convert Darts TimeSeries to pandas Series
         series = gw2_series.series.to_series()
-        
-        adf_res = perform_adf_test(series)
-        
+
+        # Use the cached version of the ADF test
+        adf_res = cached_perform_adf_test(series)
+
         if "error" in adf_res:
-            results.append({
+            row = {
                 "Item": item_name,
                 "Status": "Error",
-                "Details": adf_res["error"]
-            })
+                "Details": adf_res["error"],
+                "Stationary": None, "P-Value": None, "ADF Statistic": None, "Lags Used": None, "Observations": None
+            }
         else:
-            results.append({
+            row = {
                 "Item": item_name,
                 "Stationary": "✅ Yes" if adf_res["is_stationary"] else "❌ No",
                 "P-Value": f"{adf_res['p_value']:.4f}",
                 "ADF Statistic": f"{adf_res['adf_statistic']:.4f}",
                 "Lags Used": adf_res["used_lag"],
                 "Observations": adf_res["n_obs"]
-            })
+            }
 
-    if results:
-        st.table(pd.DataFrame(results))
-        
-        with st.expander("About Augmented Dickey-Fuller Test"):
+        all_results.append(row)
+        # Update the table in real-time
+        results_table.table(pd.DataFrame(all_results))
+
+
+    with st.expander("About Augmented Dickey-Fuller Test"):
             st.write("""
             The Augmented Dickey-Fuller (ADF) test is a common statistical test used to determine whether a given time series is stationary or not. 
             
