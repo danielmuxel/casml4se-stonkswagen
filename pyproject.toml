@@ -5,8 +5,19 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "networkx>=3.6",
-    "scikit-learn>=1.7.2",
+    "chronos-forecasting>=2.2.2",
+    "darts==0.40.0",
+    "dogpile-cache>=1.5.0",
+    "fastapi>=0.122.0",
+    "plotly>=6.5.0",
+    "prophet>=1.2.1",
+    "pydantic>=2.12.5",
+    "seaborn>=0.13.2",
+    "streamlit>=1.52.2",
+    "torch>=2.11.0a0",
+    "torchaudio>=2.10.0a0",
+    "torchvision>=0.25.0a0",
+    "uvicorn>=0.38.0",
 ]
 
 [build-system]
@@ -15,6 +26,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[[tool.uv.index]]
+url = "https://rocm.nightlies.amd.com/v2/gfx1151/"
 
 [dependency-groups]
 dev = [
@@ -40,4 +54,5 @@ dev = [
     "statsforecast>=2.0.3",
     "tqdm>=4.66.0",
     "xgboost>=3.1.2",
+    "yfinance>=0.2.50",
 ]

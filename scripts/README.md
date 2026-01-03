@@ -21,3 +21,4 @@ uv pip uninstall torch
 uv pip uninstall torchaudio
 uv pip uninstall torchvision
 uv pip install --index-url https://rocm.nightlies.amd.com/v2/gfx1151/ --pre torch torchaudio torchvision
+uv add torch torchaudio torchvision --index https://rocm.nightlies.amd.com/v2/gfx1151/ --prerelease=allow

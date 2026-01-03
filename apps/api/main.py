@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+from gw2ml.pipelines.config import DEFAULT_CONFIG, merge_config
+from gw2ml.pipelines.forecast import forecast_item
+from gw2ml.pipelines.train import train_items
+
+
+ALLOWED_CONFIG_KEYS = {"data", "split", "forecast", "metric", "models"}
+
+
+def _sanitize_config(cfg: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not cfg:
+        return {}
+    return {key: value for key, value in cfg.items() if key in ALLOWED_CONFIG_KEYS}
+
+
+class TrainRequest(BaseModel):
+    item_ids: List[int] = Field(..., min_items=1, description="List of item IDs to train models for")
+    override_config: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional config overrides (data/split/forecast/metric/models); paths/DB/S3 are ignored",
+    )
+
+
+class ForecastRequest(BaseModel):
+    item_id: int = Field(..., description="Item ID to forecast")
+    override_config: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional config overrides (data/forecast/metric/models); paths/DB/S3 are ignored",
+    )
+
+
+app = FastAPI(title="GW2ML API", version="0.1.0")
+
+
+@app.get("/health")
+def health() -> Dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/train")
+def train(req: TrainRequest) -> Dict[str, Any]:
+    try:
+        sanitized = _sanitize_config(req.override_config)
+        results = train_items(req.item_ids, override_config=merge_config(DEFAULT_CONFIG, sanitized))
+        return {"items": results}
+    except Exception as exc:  # pragma: no cover - surface errors to client
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/forecast")
+def forecast(req: ForecastRequest) -> Dict[str, Any]:
+    try:
+        sanitized = _sanitize_config(req.override_config)
+        result = forecast_item(req.item_id, override_config=merge_config(DEFAULT_CONFIG, sanitized))
+        return result
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# Run with: uv run fastapi dev apps/api/main.py --host 0.0.0.0 --port 8000
+

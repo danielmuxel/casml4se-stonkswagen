@@ -1,85 +1,82 @@
+"""ARIMA Model for Time Series Forecasting."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Dict, Optional, Tuple
 
-import pandas as pd
+from darts import TimeSeries
+from darts.models import ARIMA
+
+from .base import BaseModel
 
 
-@dataclass(slots=True)
-class MedianPriceModel:
+class ARIMAModel(BaseModel):
     """
-    Lightweight baseline that memorizes per-item median prices.
-
-    This is intentionally simple so we always have a deterministic artifact to
-    persist from pipelines even when a more sophisticated ARIMA configuration
-    is not yet wired up.
+    ARIMA (AutoRegressive Integrated Moving Average) Model.
+    
+    Args:
+        p: AR order (autoregressive terms)
+        d: Differencing order
+        q: MA order (moving average terms)
+        seasonal_order: Optional (P, D, Q, m) for SARIMA
     """
 
-    value_column: str = "sell_unit_price"
-    fallback_value: float = 0.0
-    medians_by_item: dict[int, float] = field(default_factory=dict)
+    @property
+    def name(self) -> str:
+        return "ARIMA"
 
-    def fit(self, df: pd.DataFrame) -> "MedianPriceModel":
-        """Compute medians per item from the supplied dataframe."""
-        if df.empty:
-            message = "Cannot fit MedianPriceModel on an empty dataframe."
-            raise ValueError(message)
-        required_columns = {"item_id", self.value_column}
-        missing = required_columns.difference(df.columns)
-        if missing:
-            message = f"Missing required columns: {', '.join(sorted(missing))}"
-            raise ValueError(message)
+    @property
+    def default_params(self) -> Dict[str, Any]:
+        return {"p": 1, "d": 1, "q": 1, "seasonal_order": None}
 
-        grouped = (
-            df.dropna(subset=["item_id", self.value_column])
-            .groupby("item_id")[self.value_column]
-            .median()
-        )
-        medians = {int(item_id): float(value) for item_id, value in grouped.items()}
-        if not medians:
-            message = "No medians computed; check input filters."
-            raise ValueError(message)
+    def __init__(
+        self,
+        p: int = 1,
+        d: int = 1,
+        q: int = 1,
+        seasonal_order: Optional[Tuple[int, int, int, int]] = None,
+        **kwargs: Any,
+    ) -> None:
+        self.params: Dict[str, Any] = {
+            "p": p,
+            "d": d,
+            "q": q,
+            "seasonal_order": seasonal_order,
+            **kwargs,
+        }
+        self._model: Optional[ARIMA] = None
 
-        self.medians_by_item = medians
-        self.fallback_value = float(grouped.median()) if not grouped.empty else 0.0
+    def _normalize_seasonal(self, seasonal_order: Optional[Tuple[int, int, int, int]]) -> Tuple[int, int, int, int]:
+        """Statsmodels expects a tuple; None should become (0, 0, 0, 0)."""
+        if seasonal_order is None:
+            return (0, 0, 0, 0)
+        return seasonal_order
+
+    def build_model(self, **kwargs: Any) -> ARIMA:
+        build_params = {**self.params, **kwargs}
+        p = build_params.pop("p")
+        d = build_params.pop("d")
+        q = build_params.pop("q")
+        seasonal_order = self._normalize_seasonal(build_params.pop("seasonal_order", None))
+        return ARIMA(p=p, d=d, q=q, seasonal_order=seasonal_order, **build_params)
+
+    def fit(self, series: TimeSeries, **kwargs: Any) -> "ARIMAModel":
+        self._model = self.build_model()
+        self._model.fit(series)
         return self
 
-    def predict(self, df: pd.DataFrame) -> pd.Series:
-        """Return per-row predictions aligned with the incoming dataframe."""
-        if not self.medians_by_item:
-            message = "MedianPriceModel has not been fitted yet."
-            raise ValueError(message)
-        if "item_id" not in df.columns:
-            message = "Prediction dataframe must include an item_id column."
-            raise ValueError(message)
+    def predict(self, n: int, **kwargs: Any) -> TimeSeries:
+        if self._model is None:
+            raise ValueError("Model must be fitted first. Call fit().")
+        return self._model.predict(n=n, **kwargs)
 
-        predictions = df["item_id"].map(self.medians_by_item)
-        if predictions.isna().any():
-            predictions = predictions.fillna(self.fallback_value)
-        return predictions.astype(float)
-
-    def to_payload(self) -> dict[str, Any]:
-        """Serialize fitted state to a JSON-friendly payload."""
-        return {
-            "value_column": self.value_column,
-            "fallback_value": self.fallback_value,
-            "medians_by_item": self.medians_by_item,
-        }
-
-    @classmethod
-    def from_payload(cls, payload: dict[str, Any]) -> "MedianPriceModel":
-        """Rehydrate a model from :meth:`to_payload` output."""
-        model = cls(
-            value_column=payload.get("value_column", "sell_unit_price"),
-            fallback_value=float(payload.get("fallback_value", 0.0)),
-        )
-        raw_medians = payload.get("medians_by_item", {})
-        model.medians_by_item = {int(item_id): float(value) for item_id, value in raw_medians.items()}
-        return model
+    def __repr__(self) -> str:
+        p, d, q = self.params.get("p", 1), self.params.get("d", 1), self.params.get("q", 1)
+        seasonal = self.params.get("seasonal_order")
+        if seasonal:
+            P, D, Q, m = seasonal
+            return f"ARIMA({p},{d},{q})({P},{D},{Q})[{m}]"
+        return f"ARIMA({p},{d},{q})"
 
 
-__all__ = ["MedianPriceModel"]
-
-
-
+__all__ = ["ARIMAModel"]

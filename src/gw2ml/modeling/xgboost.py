@@ -1,134 +1,98 @@
+"""XGBoost Model for Time Series Forecasting."""
 
-import mlflow
-from darts.metrics import mape
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Union
+
+from darts import TimeSeries
 from darts.models import XGBModel
 
-def run_xgboost_hyperparameter_search(
-    train_series,
-    val_series,
-    lags_range,
-    n_estimators_range,
-    max_depth_range,
-    learning_rate_range,
-    subsample_range,
-    colsample_bytree_range,
-    experiment_name="xgboost_univariate_search"
-):
+from .base import BaseModel
+
+
+class XGBoostModel(BaseModel):
     """
-    Performs a hyperparameter search for an XGBoost model on a given time series.
-
-    Logs the experiment to MLflow, including parameters for each run and the resulting
-    MAPE metric. The best performing model's parameters and score are logged to the
-    parent run.
-
+    XGBoost Model using lag features for forecasting.
+    
     Args:
-        train_series: The Darts TimeSeries to be used for training.
-        val_series: The Darts TimeSeries to be used for validation.
-        lags_range: A list of 'lags' values to try.
-        n_estimators_range: A list of 'n_estimators' values to try.
-        max_depth_range: A list of 'max_depth' values to try.
-        learning_rate_range: A list of 'learning_rate' values to try.
-        subsample_range: A list of 'subsample' values to try.
-        colsample_bytree_range: A list of 'colsample_bytree' values to try.
-        experiment_name: The name of the MLflow experiment.
-
-    Returns:
-        A tuple containing the best parameters dictionary and the best MAPE score.
+        lags: Number of past values as features
+        n_estimators: Number of boosting rounds
+        max_depth: Max tree depth
+        learning_rate: Step size shrinkage
+        subsample: Row sampling ratio
+        colsample_bytree: Column sampling ratio
     """
-    mlflow.set_experiment(experiment_name)
 
-    best_mape = float('inf')
-    best_params = None
+    @property
+    def name(self) -> str:
+        return "XGBoost"
 
-    # Calculate total combinations for progress tracking
-    total_combinations = (
-        len(lags_range) * len(n_estimators_range) * len(max_depth_range) *
-        len(learning_rate_range) * len(subsample_range) * len(colsample_bytree_range)
-    )
+    @property
+    def default_params(self) -> Dict[str, Any]:
+        return {
+            "lags": 12, "output_chunk_length": 1, "n_estimators": 100,
+            "max_depth": 5, "learning_rate": 0.1, "subsample": 0.8,
+            "colsample_bytree": 0.8, "reg_alpha": 0.0, "reg_lambda": 1.0,
+        }
 
-    # Parent run for the hyperparameter search
-    with mlflow.start_run(run_name="XGBOOST_Hyperparameter_Search") as parent_run:
-        # Log search configuration
-        mlflow.log_param("search_lags", str(lags_range))
-        mlflow.log_param("search_n_estimators", str(n_estimators_range))
-        mlflow.log_param("search_max_depth", str(max_depth_range))
-        mlflow.log_param("search_learning_rate", str(learning_rate_range))
-        mlflow.log_param("search_subsample", str(subsample_range))
-        mlflow.log_param("search_colsample_bytree", str(colsample_bytree_range))
-        mlflow.log_param("total_combinations", total_combinations)
+    def __init__(
+        self,
+        lags: Union[int, List[int]] = 12,
+        output_chunk_length: int = 1,
+        n_estimators: int = 100,
+        max_depth: int = 5,
+        learning_rate: float = 0.1,
+        subsample: float = 0.8,
+        colsample_bytree: float = 0.8,
+        reg_alpha: float = 0.0,
+        reg_lambda: float = 1.0,
+        **kwargs: Any,
+    ) -> None:
+        self.params: Dict[str, Any] = {
+            "lags": lags, "output_chunk_length": output_chunk_length,
+            "n_estimators": n_estimators, "max_depth": max_depth,
+            "learning_rate": learning_rate, "subsample": subsample,
+            "colsample_bytree": colsample_bytree, "reg_alpha": reg_alpha,
+            "reg_lambda": reg_lambda, **kwargs,
+        }
+        self._model: Optional[XGBModel] = None
 
-        combination_count = 0
-        for lags in lags_range:
-            for n_estimators in n_estimators_range:
-                for max_depth in max_depth_range:
-                    for learning_rate in learning_rate_range:
-                        for subsample in subsample_range:
-                            for colsample_bytree in colsample_bytree_range:
-                                combination_count += 1
-                                run_name = (
-                                    f"XGB_{lags}_{n_estimators}_{max_depth}_"
-                                    f"{learning_rate}_{subsample}_{colsample_bytree}"
-                                )
-                                print(
-                                    f"Testing XGBModel {combination_count}/{total_combinations}: "
-                                    f"lags={lags}, n_est={n_estimators}, depth={max_depth}, "
-                                    f"lr={learning_rate}, sub={subsample}, col={colsample_bytree}"
-                                )
+    def build_model(self, **kwargs: Any) -> XGBModel:
+        return XGBModel(**{**self.params, **kwargs})
 
-                                # Child run for each parameter combination
-                                with mlflow.start_run(run_name=run_name, nested=True):
-                                    params = {
-                                        "lags": lags,
-                                        "n_estimators": n_estimators,
-                                        "max_depth": max_depth,
-                                        "learning_rate": learning_rate,
-                                        "subsample": subsample,
-                                        "colsample_bytree": colsample_bytree,
-                                        "output_chunk_length": 1,
-                                        "reg_alpha": 0.0,
-                                        "reg_lambda": 0.0,
-                                        "model_type": "XGBModel",
-                                    }
-                                    mlflow.log_params(params)
+    def fit(self, series: TimeSeries, **kwargs: Any) -> "XGBoostModel":
+        self._model = self.build_model()
+        self._model.fit(series, **kwargs)
+        return self
 
-                                    try:
-                                        model = XGBModel(
-                                            lags=lags,
-                                            output_chunk_length=1,
-                                            n_estimators=n_estimators,
-                                            max_depth=max_depth,
-                                            learning_rate=learning_rate,
-                                            subsample=subsample,
-                                            colsample_bytree=colsample_bytree,
-                                            reg_alpha=0.0,
-                                            reg_lambda=0.0,
-                                        )
-                                        model.fit(train_series)
-                                        forecast = model.predict(len(val_series))
-                                        error = mape(val_series, forecast)
-                                        mlflow.log_metric("mape", error)
+    def predict(self, n: int, **kwargs: Any) -> TimeSeries:
+        if self._model is None:
+            raise ValueError("Model must be fitted first. Call fit().")
+        return self._model.predict(n=n, **kwargs)
 
-                                        if error < best_mape:
-                                            best_mape = error
-                                            best_params = params
-                                            print(f"New best: {best_params} with MAPE: {error:.2f}%")
-                                            
-                                            # Log best model to the parent run
-                                            with mlflow.start_run(run_id=parent_run.info.run_id):
-                                                mlflow.log_metric("best_mape", error, step=combination_count)
-                                                mlflow.log_params({f"best_{k}": v for k, v in params.items()})
+    def historical_forecasts(
+        self,
+        series: TimeSeries,
+        start: float = 0.5,
+        forecast_horizon: int = 1,
+        stride: int = 1,
+        retrain: bool = False,
+        **kwargs: Any,
+    ) -> TimeSeries:
+        """XGBoost can use retrain=False for faster backtesting."""
+        if self._model is None:
+            raise ValueError("Model must be fitted first. Call fit().")
+        return self._model.historical_forecasts(
+            series=series, start=start, forecast_horizon=forecast_horizon,
+            stride=stride, retrain=retrain, **kwargs,
+        )
+
+    def __repr__(self) -> str:
+        lags = self.params.get("lags", 12)
+        n_est = self.params.get("n_estimators", 100)
+        depth = self.params.get("max_depth", 5)
+        lr = self.params.get("learning_rate", 0.1)
+        return f"XGBoost(lags={lags}, n_est={n_est}, depth={depth}, lr={lr})"
 
 
-                                    except Exception as e:
-                                        mlflow.log_param("status", "failed")
-                                        mlflow.log_param("error", str(e))
-                                        print(f"Failed XGBModel combination: {run_name} with error: {e}")
-
-        # Log final results in parent run
-        with mlflow.start_run(run_id=parent_run.info.run_id):
-            mlflow.log_metric("final_best_mape", best_mape)
-            if best_params:
-                mlflow.log_params({f"final_best_{k}": v for k,v in best_params.items()})
-
-    print(f"\nBest model parameters: {best_params} with MAPE: {best_mape:.2f}%")
-    return best_params, best_mape
+__all__ = ["XGBoostModel"]
