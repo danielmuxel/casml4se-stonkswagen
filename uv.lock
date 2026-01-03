@@ -424,6 +424,7 @@ dev = [
     { name = "python-dotenv" },
     { name = "sqlalchemy" },
     { name = "statsforecast" },
+    { name = "tqdm" },
     { name = "xgboost" },
     { name = "yfinance" },
 ]
@@ -467,6 +468,7 @@ dev = [
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "sqlalchemy", specifier = ">=2.0.44" },
     { name = "statsforecast", specifier = ">=2.0.3" },
+    { name = "tqdm", specifier = ">=4.66.0" },
     { name = "xgboost", specifier = ">=3.1.2" },
     { name = "yfinance", specifier = ">=0.2.50" },
 ]

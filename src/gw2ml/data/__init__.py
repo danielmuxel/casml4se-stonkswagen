@@ -18,6 +18,7 @@ from .database_queries import (
     get_item_count,
     get_items,
     get_prices,
+    get_prices_snapshot,
     get_tp_history,
     list_columns,
 )
@@ -39,6 +40,7 @@ __all__ = [
     # Low-level queries
     "get_prices",
     "get_bltc_history",
+    "get_prices_snapshot",
     "get_tp_history",
     "get_items",
     "get_item_count",

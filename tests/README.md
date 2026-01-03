@@ -1,4 +1,4 @@
-# ml/tests
+# tests
 
 Add automated tests covering pipelines, shared utilities, and model behaviors here. Include regression tests for metrics, data validation checks, and smoke tests for training scripts.
 
@@ -13,17 +13,25 @@ Add automated tests covering pipelines, shared utilities, and model behaviors he
    - Add a new entry to `TEST_CASES` where the key is a short handle and the value is the pytest node id for your test function:
      ```python
      TEST_CASES = {
-         "database_export": "ml/tests/test_database.py::test_fetch_and_export_real_tables",
-         "my_feature": "ml/tests/test_my_feature.py::test_my_feature_behaves",
+         "database_export": "tests/test_database.py::test_fetch_and_export_real_tables",
+         "my_feature": "tests/test_my_feature.py::test_my_feature_behaves",
      }
      ```
 
 3. **Run all registered cases**
    - From the repository root execute:
      ```bash
-     uv run --project ml python scripts/run_ml_tests.py
+     uv run python scripts/run_ml_tests.py
      ```
    - The script resolves every entry in `TEST_CASES`, runs them via pytest, and prints results (including skip reasons).
+   - To run a subset, provide comma-delimited handles via `ML_TEST_CASES`:
+     ```bash
+     ML_TEST_CASES=database_export uv run python scripts/run_ml_tests.py
+     ```
+   - Alternatively, invoke pytest directly:
+     ```bash
+     uv run pytest tests/test_database.py::test_fetch_prices_snapshot_and_export
+     ```
 
 Whenever you add a new integration case, repeat the steps above so the runner picks it up automatically.
 

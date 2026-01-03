@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import Iterable
 
 
 def _ensure_repo_root_on_path() -> Path:
@@ -25,17 +26,38 @@ def _ensure_repo_root_on_path() -> Path:
     return repo_root
 
 
+def _resolve_selected_cases(raw: str | None, available: dict[str, str]) -> dict[str, str]:
+    if raw is None:
+        return available
+
+    requested = [entry.strip() for entry in raw.split(",") if entry.strip()]
+    if not requested:
+        return available
+
+    missing = [name for name in requested if name not in available]
+    if missing:
+        joined = ", ".join(sorted(available))
+        raise KeyError(f"Unknown case(s) {missing}. Available cases: {joined}.")
+    return {name: available[name] for name in requested}
+
+
+def _print_case_overview(cases: dict[str, str]) -> None:
+    print("Running ML test cases:")
+    for name, node in cases.items():
+        print(f"  - {name}: {node}")
+
+
 def main() -> int:
     repo_root = _ensure_repo_root_on_path()
 
     try:
-        from ml.tests.case_registry import TEST_CASES
+        from tests.case_registry import TEST_CASES
     except Exception as exc:  # pragma: no cover
         print(f"Failed to import test case registry: {exc}")
         return 1
 
     if not TEST_CASES:
-        print("No test cases registered. Update ml/tests/case_registry.py first.")
+        print("No test cases registered. Update tests/case_registry.py first.")
         return 0
 
     try:
@@ -44,12 +66,16 @@ def main() -> int:
         print(f"pytest is required to run the cases. Install it first: {exc}")
         return 1
 
-    print("Running all ML test cases:")
-    for name, node in TEST_CASES.items():
-        print(f"  - {name}: {node}")
+    selected_raw = os.getenv("ML_TEST_CASES")
+    try:
+        selected_cases = _resolve_selected_cases(selected_raw, TEST_CASES)
+    except KeyError as exc:
+        print(exc)
+        return 1
 
     os.chdir(repo_root)
-    pytest_args = ["-q", "-rs", *TEST_CASES.values()]
+    _print_case_overview(selected_cases)
+    pytest_args = ["-q", "-rs", *selected_cases.values()]
     return pytest.main(pytest_args)
 
 
