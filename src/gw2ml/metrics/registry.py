@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Callable, Dict, List
 
-from darts.metrics import mape
+from darts.metrics import mae, mape, rmse, smape
 
 MetricFn = Callable[[object, object], float]
 
@@ -30,8 +30,19 @@ def list_metrics() -> List[str]:
     return sorted(_REGISTRY.keys())
 
 
+def _safe_mape(y_true, y_pred) -> float:
+    try:
+        return float(mape(y_true, y_pred))
+    except ValueError:
+        # MAPE is undefined if y_true contains zeros.
+        return float("nan")
+
+
 # Default metrics
-register_metric("mape", lambda y_true, y_pred: float(mape(y_true, y_pred)))
+register_metric("mape", _safe_mape)
+register_metric("rmse", lambda y_true, y_pred: float(rmse(y_true, y_pred)))
+register_metric("mae", lambda y_true, y_pred: float(mae(y_true, y_pred)))
+register_metric("smape", lambda y_true, y_pred: float(smape(y_true, y_pred)))
 
 __all__ = ["register_metric", "get_metric", "list_metrics"]
 
