@@ -28,6 +28,7 @@ Example:
 from .base import BaseModel
 from .arima import ARIMAModel
 from .exponential_smoothing import ExponentialSmoothingModel
+from .chronos import Chronos2
 from .registry import get_default_grid, get_model, list_models, register_model
 from .xgboost import XGBoostModel
 
@@ -68,7 +69,7 @@ register_model(
     default_grid=_ES_DEFAULT_GRID,
 )
 register_model("XGBoost", XGBoostModel, default_grid=_XGB_DEFAULT_GRID)
-
+register_model("Chronos2", Chronos2)
 # Example for future additions:
 # from .nbeats import NBEATSModel
 # register_model("NBEATS", NBEATSModel, default_grid={"num_blocks": [2, 3]})
@@ -78,6 +79,7 @@ __all__ = [
     "ARIMAModel",
     "ExponentialSmoothingModel",
     "XGBoostModel",
+    "Chronos2",
     "register_model",
     "get_model",
     "get_default_grid",
