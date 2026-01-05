@@ -19,19 +19,36 @@ Workspace for exploring Guild Wars 2 trading data, training machine-learning mod
 The project uses [`uv`](https://docs.astral.sh/uv/) to manage Python dependencies and virtual environments.
 
 1. Install `uv` (once per machine):
-   ```
+   ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
-2. Sync dependencies defined in a `pyproject.toml` (for example inside `ml/`, `scripts/`, or `notebooks/`):
+
+2. Sync dependencies based on your hardware:
+
+   **macOS (or CPU-only):**
+   ```bash
+   uv sync --group cpu
    ```
-   uv sync
+
+   **Linux with AMD GPU (ROCm):**
+   ```bash
+   uv sync --group rocm --extra-index-url https://rocm.nightlies.amd.com/v2/gfx1151/
    ```
+
+   **Linux with NVIDIA GPU (CUDA):**
+   ```bash
+   uv sync --group cuda --extra-index-url https://download.pytorch.org/whl/cu121
+   ```
+
+   > **Note:** PyTorch dependencies are separated into hardware-specific groups to support different GPU architectures. Choose the group matching your system.
+
 3. Execute commands inside the managed environment:
-   ```
+   ```bash
    uv run python path/to/script.py
    ```
+
 4. Add new packages when you need them:
-   ```
+   ```bash
    uv add package-name
    ```
 

@@ -14,10 +14,12 @@ dependencies = [
     "pydantic>=2.12.5",
     "seaborn>=0.13.2",
     "streamlit>=1.52.2",
-    "torch>=2.11.0a0",
-    "torchaudio>=2.10.0a0",
-    "torchvision>=0.25.0a0",
     "uvicorn>=0.38.0",
+    # Note: torch/torchaudio/torchvision moved to dependency groups below
+    # Install the appropriate group based on your hardware:
+    #   macOS: uv sync --group cpu
+    #   Linux + AMD GPU: uv sync --group rocm --index-url https://rocm.nightlies.amd.com/v2/gfx1151/
+    #   Linux + NVIDIA GPU: uv sync --group cuda --index-url https://download.pytorch.org/whl/cu121
 ]
 
 [build-system]
@@ -27,10 +29,30 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[[tool.uv.index]]
-url = "https://rocm.nightlies.amd.com/v2/gfx1151/"
+# ROCm index removed from global config - specify via CLI when needed
+# [[tool.uv.index]]
+# url = "https://rocm.nightlies.amd.com/v2/gfx1151/"
 
 [dependency-groups]
+# PyTorch dependency groups - install one based on your hardware
+# Note: ROCm and CUDA groups use version ranges compatible with PyPI
+# The --extra-index-url flag will prioritize GPU-specific builds when available
+cpu = [
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "torchvision>=0.15.0",
+]
+rocm = [
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "torchvision>=0.15.0",
+]
+cuda = [
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "torchvision>=0.15.0",
+]
+
 dev = [
     "boto3>=1.41.3",
     "moto>=5.0.0",
