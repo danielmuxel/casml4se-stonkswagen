@@ -311,6 +311,7 @@ def load_gw2_series(
     value_column: str = "buy_unit_price",
     use_cache: bool = True,
     fill_missing_dates: bool = True,
+    resample_freq: Optional[str] = None,
 ) -> GW2Series:
     """
     Load GW2 price data for a single item.
@@ -321,6 +322,11 @@ def load_gw2_series(
         value_column: "buy_unit_price" or "sell_unit_price"
         use_cache: Whether to use cached data (default: True)
         fill_missing_dates: Whether to interpolate missing dates (default: True)
+        resample_freq: Resample frequency for downsampling (e.g., '1H', '6H', '1D')
+                       - '1H': hourly (default for raw data)
+                       - '6H': 6-hourly (reduces points by 6x)
+                       - '1D': daily (reduces points by 24x if hourly data)
+                       - None: no resampling (default)
 
     Returns:
         GW2Series with TimeSeries and metadata
@@ -329,13 +335,14 @@ def load_gw2_series(
         ValueError: If no data is found for the item
 
     Example:
-        >>> data = load_gw2_series(19697, days_back=30)
+        >>> # Load with daily aggregation (faster training)
+        >>> data = load_gw2_series(19697, days_back=30, resample_freq='1D')
         >>> print(data.info())
         >>> train, test = data.split(train=0.8)
     """
-    # NOTE: fill_missing_dates materially changes the resulting TimeSeries index,
-    # so it must be part of the cache key.
-    cache_key = (item_id, days_back, value_column, fill_missing_dates)
+    # NOTE: fill_missing_dates and resample_freq materially change the resulting TimeSeries index,
+    # so they must be part of the cache key.
+    cache_key = (item_id, days_back, value_column, fill_missing_dates, resample_freq)
 
     # Check cache
     if use_cache and cache_key in _cache:
@@ -353,6 +360,13 @@ def load_gw2_series(
 
     # Convert to TimeSeries
     series = _df_to_series(df, value_col=value_column, fill_missing_dates=fill_missing_dates)
+
+    # Resample if requested (for faster training with large datasets)
+    if resample_freq is not None:
+        # Convert to pandas DataFrame, resample, then back to TimeSeries
+        df_series = series.pd_dataframe()
+        df_resampled = df_series.resample(resample_freq).mean()  # Average values in each bucket
+        series = TimeSeries.from_dataframe(df_resampled)
 
     # Get item name
     item_name = _get_item_name(client, item_id)

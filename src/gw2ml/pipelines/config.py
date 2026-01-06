@@ -14,6 +14,7 @@ DEFAULT_CONFIG: Config = {
         "days_back": 30,
         "fill_missing_dates": True,
         "min_points": 50,
+        "resample_freq": None,  # For faster training, use '6H' (6-hourly) or '1D' (daily)
     },
     "split": {
         "train": 0.7,
@@ -21,7 +22,10 @@ DEFAULT_CONFIG: Config = {
         "test_days": 7,
         "val_days": None,
     },
-    "forecast": {"horizon": 12},
+    "forecast": {
+        "horizon": 12,
+        "backtest_split": 0.8,  # Use 80% for training, 20% for testing in backtest
+    },
     "paths": {
         "artifacts_dir": str((PROJECT_ROOT / "models").resolve()),
         "use_s3": False,

@@ -64,7 +64,7 @@ def render_forecast_tab() -> None:
         metrics = st.multiselect("Metrics to compute", options=available_metrics, default=available_metrics)
 
     st.subheader("Forecast")
-    target_item = st.text_input("Forecast item_id", "19697")
+    target_item = st.text_input("Forecast item_id", "19702")
     retrain_before = st.checkbox("Retrain before forecast (full search)", value=False)
     if st.button("Run forecast"):
         try:
@@ -72,13 +72,39 @@ def render_forecast_tab() -> None:
                 target_item, days_back, value_column, horizon, selected_models, primary_metric, metrics
             )
             item_id = int(target_item)
-            result = forecast_item(item_id, override_config=payload["config"], retrain=retrain_before)
+
+            with st.status(f"Processing forecast for item {item_id}...", expanded=True) as status:
+                if retrain_before:
+                    st.write(f"🔄 Retraining models: {', '.join(selected_models)}")
+
+                st.write(f"📊 Loading {days_back} days of data...")
+                st.write(f"🔮 Generating {horizon}-step forecast...")
+                st.write(f"📈 Running backtest validation...")
+
+                result = forecast_item(item_id, override_config=payload["config"], retrain=retrain_before)
+
+                status.update(label=f"✓ Forecast complete for item {item_id}", state="complete")
+
             st.success("Forecast generated.")
 
             models_payload = result.get("models", [])
             missing_models = result.get("missing_models", [])
+
+            if models_payload:
+                successful_models = [m.get('model_name') for m in models_payload]
+                st.info(f"✓ Successfully generated forecasts for {len(models_payload)} model(s): {', '.join(successful_models)}")
+
+                # Check for models with failed backtests (NaN metrics)
+                failed_backtests = [m.get('model_name') for m in models_payload if m.get('history', {}).get('metric') != m.get('history', {}).get('metric')]
+                if failed_backtests:
+                    st.warning(f"⚠️ Backtest failed for: {', '.join(failed_backtests)} (possible hardware incompatibility). Future forecast still available.")
+
             if missing_models:
-                st.warning(f"Missing artifacts for: {', '.join(missing_models)}. Retrain to generate them.")
+                st.warning(f"⚠️ Missing artifacts for: {', '.join(missing_models)}. Retrain to generate them.")
+
+            # If no models succeeded at all
+            if not models_payload and not missing_models:
+                st.error("❌ All models failed to generate forecasts. Check logs for details (possible MPS/GPU incompatibility).")
 
             # Future forecasts (all models)
             future_rows = []
