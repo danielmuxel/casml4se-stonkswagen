@@ -163,8 +163,25 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
         logger.debug(f"    Data split: train={len(train_series)}, test={len(test_series)}")
 
         # STEP 2: Evaluate on test data (model trained ONLY on train data)
+        hist_forecast = None
+        actual_series = None
+        hist_metric = float("nan")
         try:
-            logger.debug(f"    Running train/test evaluation (model NEVER sees test data during training)...")
+            # Determine stride for backtest
+            # stride=1: Iterative 1-step-ahead (model retrains after each step, can "react" to data)
+            # stride=horizon: True multi-step-ahead (model commits to N-step forecast, more realistic)
+            # stride=horizon//N: Compromise - retrains every N steps for balance
+            backtest_stride_config = config["forecast"].get("backtest_stride", "auto")
+            if backtest_stride_config == "auto":
+                # Use stride = max(horizon//4, 6) for balance between density and realism
+                # This means the model retrains every ~30 min (6 steps = 30 min at 5-min intervals)
+                # rather than every 5 minutes (stride=1) or every 2 hours (stride=horizon)
+                backtest_stride = max(horizon // 4, 6)
+                logger.info(f"  Using auto stride={backtest_stride} (horizon={horizon}, ~{backtest_stride*5}min between retrains)")
+            else:
+                backtest_stride = int(backtest_stride_config)
+
+            logger.debug(f"    Running train/test evaluation (stride={backtest_stride}, horizon={horizon})...")
             backtest_result = walk_forward_backtest(
                 model_class=model_obj.__class__,
                 model_params=metadata.get("params", {}),
@@ -172,7 +189,7 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
                 train_series=train_series,  # Train on this ONLY
                 test_series=test_series,  # Evaluate on this
                 forecast_horizon=horizon,
-                stride=1,
+                stride=backtest_stride,
                 verbose=False,
             )
             hist_forecast = backtest_result.forecasts
@@ -181,12 +198,11 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
             logger.info(f"    {model_name} test set {primary_metric}: {hist_metric:.4f} (train={backtest_result.train_size}, test={backtest_result.test_size})")
         except Exception as exc:
             exc_msg = str(exc)
-            if "MPS" in exc_msg or "mps" in exc_msg or "float32" in exc_msg or "dtype" in exc_msg:
-                logger.error(f"    ✗ {model_name} evaluation failed: Hardware incompatibility (MPS/GPU issue)")
+            if "MPS" in exc_msg or "mps" in exc_msg or "float32" in exc_msg or "dtype" in exc_msg or "_model_call" in exc_msg:
+                logger.warning(f"    ⚠️ {model_name} backtest failed: Hardware incompatibility (MPS/GPU issue)")
             else:
-                logger.error(f"    ✗ {model_name} evaluation failed: {exc}")
-            logger.warning(f"    Skipping {model_name} entirely")
-            continue
+                logger.warning(f"    ⚠️ {model_name} backtest failed: {exc}")
+            logger.info(f"    Continuing with future forecast only (backtest unavailable)")
 
         # STEP 3: Retrain on ALL data for production forecast
         try:
@@ -246,12 +262,24 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
     else:
         logger.warning(f"⚠️ Forecast complete for item {item_id} but no models produced forecasts")
 
+    # Determine what stride was used for backtest
+    backtest_stride_config = config["forecast"].get("backtest_stride", "auto")
+    if backtest_stride_config == "auto":
+        actual_stride = max(horizon // 4, 6)
+    else:
+        actual_stride = int(backtest_stride_config)
+
     return {
         "item_id": item_id,
         "primary_metric": primary_metric,
         "forecast_horizon": horizon,
         "models": models_payload,
         "missing_models": missing_models,
+        "backtest_config": {
+            "stride": actual_stride,
+            "horizon": horizon,
+            "mode": backtest_stride_config,
+        },
     }
 
 

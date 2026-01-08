@@ -25,6 +25,7 @@ DEFAULT_CONFIG: Config = {
     "forecast": {
         "horizon": 12,
         "backtest_split": 0.8,  # Use 80% for training, 20% for testing in backtest
+        "backtest_stride": "auto",  # "auto" uses stride=1 for iterative forecasting, or specify an integer
     },
     "paths": {
         "artifacts_dir": str((PROJECT_ROOT / "models").resolve()),

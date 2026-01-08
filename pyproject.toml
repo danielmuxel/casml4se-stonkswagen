@@ -20,6 +20,7 @@ dependencies = [
     #   macOS: uv sync --group cpu
     #   Linux + AMD GPU: uv sync --group rocm --index-url https://rocm.nightlies.amd.com/v2/gfx1151/
     #   Linux + NVIDIA GPU: uv sync --group cuda --index-url https://download.pytorch.org/whl/cu121
+    "watchdog>=6.0.0",
 ]
 
 [build-system]

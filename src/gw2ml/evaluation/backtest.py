@@ -149,8 +149,14 @@ def walk_forward_backtest(
             forecast_horizon=forecast_horizon,
             stride=stride,
             retrain=True,  # Retrain at each step using only past data
+            last_points_only=False,  # Return all predictions, not just last point of each window
             verbose=verbose,
         )
+
+        # Handle list of TimeSeries (when last_points_only=False with stride >= 1)
+        if isinstance(forecasts, list):
+            from darts import concatenate
+            forecasts = concatenate(forecasts, axis=0)
 
         # Extract actuals from test period
         actuals = test_series.slice_intersect(forecasts)
@@ -174,8 +180,14 @@ def walk_forward_backtest(
             forecast_horizon=forecast_horizon,
             stride=stride,
             retrain=True,  # ALWAYS retrain to prevent data leakage
+            last_points_only=False,  # Return all predictions, not just last point of each window
             verbose=verbose,
         )
+
+        # Handle list of TimeSeries (when last_points_only=False with stride >= 1)
+        if isinstance(forecasts, list):
+            from darts import concatenate
+            forecasts = concatenate(forecasts, axis=0)
 
         # Extract the corresponding actual values
         actuals = series.slice_intersect(forecasts)
