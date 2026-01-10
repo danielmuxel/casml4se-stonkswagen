@@ -11,6 +11,9 @@ from gw2ml.modeling.registry import list_models
 from gw2ml.pipelines.config import DEFAULT_CONFIG, merge_config
 from gw2ml.pipelines.forecast import forecast_item
 from gw2ml.pipelines.train import train_items
+from gw2ml.utils import get_logger
+
+logger = get_logger("forecast_app")
 
 
 ALLOWED_CONFIG_KEYS = {"data", "split", "forecast", "metric", "models"}
@@ -68,12 +71,14 @@ def render_forecast_tab() -> None:
     retrain_before = st.checkbox("Retrain before forecast (full search)", value=False)
     if st.button("Run forecast"):
         try:
+            logger.info(f"Running forecast for item {target_item} (retrain={retrain_before})")
             payload = _build_override_config(
                 target_item, days_back, value_column, horizon, selected_models, primary_metric, metrics
             )
             item_id = int(target_item)
             result = forecast_item(item_id, override_config=payload["config"], retrain=retrain_before)
             st.success("Forecast generated.")
+            logger.info(f"Forecast for item {item_id} completed successfully.")
 
             models_payload = result.get("models", [])
             missing_models = result.get("missing_models", [])
@@ -165,6 +170,7 @@ def render_forecast_tab() -> None:
 
             st.json(result)
         except Exception as exc:  # pragma: no cover
+            logger.error(f"Forecast failed for item {target_item}: {exc}", exc_info=True)
             st.error(f"Forecast failed: {exc}")
             st.exception(exc)
 

@@ -10,6 +10,9 @@ import pandas as pd
 from gw2ml.data.loaders import load_gw2_series
 from gw2ml.metrics.registry import get_metric
 from gw2ml.pipelines.config import DEFAULT_CONFIG, Config, get_artifacts_dir, merge_config
+from gw2ml.utils import get_logger
+
+logger = get_logger("pipelines.forecast")
 
 
 def _load_best_artifact(item_id: int, config: Config) -> tuple[Any, Dict[str, Any]]:
@@ -70,6 +73,7 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
     - future forecast for the next horizon steps
     - a short backtest (historical forecasts) for quick performance view
     """
+    logger.info(f"Forecasting for item {item_id} (retrain={retrain})")
     config = merge_config(DEFAULT_CONFIG, override_config)
     horizon = int(config["forecast"]["horizon"])
     primary_metric = config.get("metric", {}).get("primary", "mape")
@@ -114,26 +118,43 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
         found_names = {name for name, _, _ in loaded}
         missing_models = [m for m in requested_models if m not in found_names]
 
-    # If retrain was requested or artifacts are missing, retrain then reload artifacts.
-    if retrain or missing_models:
-        if retrain or missing_models:
-            from gw2ml.pipelines.train import train_items
+    # If retrain was requested, do full grid search. 
+    # If artifacts are missing and retrain is False, we use zero-shot fallback.
+    if retrain:
+        from gw2ml.pipelines.train import train_items
+        train_items([item_id], override_config=override_config)
+        loaded = _load_all_artifacts(item_id, config, allowed_models=requested_models or None)
+        if requested_models:
+            found_names = {name for name, _, _ in loaded}
+            missing_models = [m for m in requested_models if m not in found_names]
 
-            train_items([item_id], override_config=override_config)
-            loaded = _load_all_artifacts(item_id, config, allowed_models=requested_models or None)
-            if requested_models:
-                found_names = {name for name, _, _ in loaded}
-                missing_models = [m for m in requested_models if m not in found_names]
+    if missing_models:
+        from gw2ml.modeling.registry import get_model
+        for model_name in missing_models[:]:  # iterate over copy
+            try:
+                model_cls = get_model(model_name)
+                model_obj = model_cls()
+                metadata = {
+                    "model_name": model_name,
+                    "params": model_obj.get_params(),
+                    "trained_at": "zero-shot/default",
+                    "is_pretrained_default": True
+                }
+                loaded.append((model_name, model_obj, metadata))
+                missing_models.remove(model_name)
+            except Exception:
+                pass
 
     if not loaded:
         raise FileNotFoundError(
-            f"No artifacts available for item {item_id}. "
+            f"No artifacts available and no zero-shot fallback for item {item_id}. "
             f"Selected models={requested_models or 'all'}. "
-            f"Missing={missing_models}. Consider retraining."
+            f"Missing={missing_models}."
         )
 
     for model_name, model_obj, metadata in loaded:
-        # Refit on latest data
+        logger.info(f"Loading model {model_name}")
+        # Refit on latest data (efficient for foundation models as implemented in Chronos2)
         model_obj.fit(series_meta.series)
         last_ts = series_meta.series.time_index[-1]
 

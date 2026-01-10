@@ -13,6 +13,9 @@ from gw2ml.data.loaders import GW2Series, load_gw2_series
 from gw2ml.metrics.registry import get_metric
 from gw2ml.modeling.registry import get_default_grid, get_model
 from gw2ml.pipelines.config import DEFAULT_CONFIG, Config, get_artifacts_dir, merge_config
+from gw2ml.utils import get_logger
+
+logger = get_logger("pipelines.train")
 
 
 def _iter_param_grid(grid: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
@@ -92,6 +95,7 @@ def train_items(item_ids: List[int], override_config: Config | None = None) -> L
 
     Returns a list of metadata dictionaries (one per item).
     """
+    logger.info(f"Training items: {item_ids}")
     config = merge_config(DEFAULT_CONFIG, override_config)
     artifacts_root = get_artifacts_dir(config)
     metric_cfg = config.get("metric", {})
@@ -101,6 +105,7 @@ def train_items(item_ids: List[int], override_config: Config | None = None) -> L
     results: List[Dict[str, Any]] = []
 
     for item_id in item_ids:
+        logger.info(f"Processing item {item_id}")
         series_meta = load_gw2_series(
             item_id=item_id,
             days_back=config["data"]["days_back"],
@@ -140,7 +145,7 @@ def train_items(item_ids: List[int], override_config: Config | None = None) -> L
                     candidate.fit(train_ts)
                 except Exception as exc:
                     # Skip failing candidate; e.g., insufficient data for seasonal initialization.
-                    print(f"[train_items] skip {model_name} params={params}: {exc}")
+                    logger.warning(f"Skipping {model_name} with params={params} due to error: {exc}")
                     continue
 
                 local_val_ts = val_ts or test_ts
@@ -192,6 +197,10 @@ def train_items(item_ids: List[int], override_config: Config | None = None) -> L
         global_best = min(
             per_model_results,
             key=lambda m: float(m["metrics"]["val"].get(primary_metric, float("inf")) if m["metrics"]["val"] else float("inf")),
+        )
+        logger.info(
+            f"Best model for item {item_id}: {global_best['model_name']} "
+            f"({primary_metric}: {global_best['metrics']['val'].get(primary_metric):.4f})"
         )
 
         item_dir = artifacts_root / str(item_id)

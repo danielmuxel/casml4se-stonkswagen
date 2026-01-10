@@ -33,6 +33,7 @@ DEFAULT_CONFIG: Config = {
         {"name": "ARIMA", "grid": None},
         {"name": "ExponentialSmoothing", "grid": None},
         {"name": "XGBoost", "grid": None},
+        {"name": "Chronos2", "grid": None},
     ],
 }
 
