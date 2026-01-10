@@ -62,7 +62,7 @@ def render_forecast_tab() -> None:
         all_models = list_models()
         selected_models = st.multiselect("Models", options=all_models, default=all_models)
 
-        available_metrics = ["mape", "smape"]
+        available_metrics = ["mape"]
         primary_metric = st.selectbox("Primary metric", options=available_metrics, index=0)
         metrics = st.multiselect("Metrics to compute", options=available_metrics, default=available_metrics)
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional, Tuple, Union
 
+import numpy as np
+import torch
 from darts import TimeSeries
 from darts.models import Chronos2Model
 from .base import BaseModel
@@ -68,6 +70,12 @@ class Chronos2(BaseModel):
     def fit(self, series: TimeSeries, **kwargs: Any) -> Chronos2:
         # Rebuild model to ensure a fresh start or consistent state,
         # matching the behavior of other models in the pipeline.
+        
+        # MPS doesn't support float64. Ensure series is float32 if on MPS or in general for Chronos.
+        if series.dtype == np.float64:
+            logger.info("Casting series to float32 for Chronos2 (MPS compatibility)")
+            series = series.astype(np.float32)
+
         self._model = self.build_model()
         logger.info(f"Fitting Chronos2 (n={series.shape[0]}) with kwargs {kwargs}")
 
@@ -85,6 +93,10 @@ class Chronos2(BaseModel):
             self._model = self.build_model()
         
         series = kwargs.pop("series", getattr(self, "_context_series", None))
+        if series is not None and series.dtype == np.float64:
+            logger.info("Casting series to float32 for Chronos2 predict (MPS compatibility)")
+            series = series.astype(np.float32)
+
         logger.info(f"Generating prediction with Chronos2 (n={n})")
         return self._model.predict(n=n, series=series, **kwargs)
 
@@ -101,6 +113,10 @@ class Chronos2(BaseModel):
         """Walk-forward backtesting."""
         if self._model is None:
             self._model = self.build_model()
+
+        if series.dtype == np.float64:
+            logger.info("Casting series to float32 for Chronos2 historical_forecasts (MPS compatibility)")
+            series = series.astype(np.float32)
 
         logger.info(f"Computing historical forecasts with Chronos2 (horizon={forecast_horizon}, retrain={retrain})")
         # If retrain is False and we have a foundation model, we can use it zero-shot
