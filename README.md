@@ -2,6 +2,40 @@
 
 Workspace for exploring Guild Wars 2 trading data, training machine-learning models, and preparing frontend dashboards that surface the results.
 
+## TL;DR - Quick Start
+
+**Zu faul zum Lesen? Hier sind die wichtigsten Befehle:**
+
+1. **Dependencies installieren** (einmalig, wähle deine Hardware):
+   ```bash
+   # macOS oder CPU-only:
+   uv sync --group cpu
+
+   # Linux mit AMD GPU (ROCm):
+   uv sync --group rocm --extra-index-url https://rocm.nightlies.amd.com/v2/gfx1151/
+
+   # Linux mit NVIDIA GPU (CUDA):
+   uv sync --group cuda --extra-index-url https://download.pytorch.org/whl/cu121
+   ```
+
+2. **`.env` Datei anlegen** (für DB-Verbindung etc.):
+   ```bash
+   # Erstelle eine .env Datei im Projekt-Root mit mindestens:
+   DB_URL=postgresql://user:password@host:port/database
+   ```
+
+3. **Backend starten** (in einem Terminal):
+   ```bash
+   uv run fastapi dev apps/api/main.py --host 0.0.0.0 --port 8000
+   ```
+
+4. **Frontend starten** (in einem ANDEREN Terminal):
+   ```bash
+   uv run streamlit run apps/streamlit/forecast_app.py
+   ```
+
+> **Wichtig:** Backend und Frontend sind zwei separate Prozesse und müssen in verschiedenen Terminals gestartet werden. Das Backend läuft auf Port 8000, das Streamlit-Frontend öffnet automatisch einen Browser.
+
 ## Folder Structure
 
 - `apps/` – Nuxt applications that will present dashboards and tools backed by the ML workflows.
@@ -81,6 +115,32 @@ uv run pytest tests
 ```
 
 Some integration tests hit live databases; ensure `DB_URL` (or equivalent env credentials) is configured before running.
+
+## Daten aus der Datenbank exportieren
+
+Mit `scripts/fetch_all_prices.py` kannst du alle Preisdaten aus der Datenbank als CSV-Dateien herunterladen. Das Script erstellt automatisch einen Snapshot-Ordner mit Zeitstempel:
+
+```bash
+# Einfacher Export aller Daten (bis jetzt):
+uv run python scripts/fetch_all_prices.py
+# Standard: 10 Workers, alle Items (nicht nur handelbare),
+# Zeitraum: unbegrenzt bis jetzt, Batch-Size: 200, Delay: 0.1s,
+# nutzt Cache (lädt nicht neu, wenn Snapshot bereits existiert)
+
+# Nur handelbare Items exportieren:
+uv run python scripts/fetch_all_prices.py --tradable-only
+
+# Mit Datumsfilter (z.B. ab 2024-01-01):
+uv run python scripts/fetch_all_prices.py --start-date 2024-01-01
+
+# Mit mehr Parallel-Workern für schnelleren Export:
+uv run python scripts/fetch_all_prices.py --workers 12
+
+# Liste aller handelbaren Items exportieren:
+uv run python scripts/fetch_all_prices.py --export-tradable-items
+```
+
+Die CSV-Dateien werden in einem Ordner mit Zeitstempel unter `data/gw2/snapshots/` gespeichert. Jedes Item bekommt eine eigene CSV-Datei.
 
 ## Training/Forecast Entry Points
 

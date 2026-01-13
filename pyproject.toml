@@ -8,7 +8,7 @@ dependencies = [
     "chronos-forecasting>=2.2.2",
     "darts==0.40.0",
     "dogpile-cache>=1.5.0",
-    "fastapi>=0.122.0",
+    "fastapi[standard]>=0.122.0",
     "plotly>=6.5.0",
     "prophet>=1.2.1",
     "pydantic>=2.12.5",
