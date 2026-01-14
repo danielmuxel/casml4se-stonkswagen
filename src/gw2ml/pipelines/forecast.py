@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from pathlib import Path
 from typing import Any, Dict
 
@@ -12,8 +11,9 @@ from gw2ml.data.loaders import load_gw2_series
 from gw2ml.evaluation.backtest import walk_forward_backtest
 from gw2ml.metrics.registry import get_metric
 from gw2ml.pipelines.config import DEFAULT_CONFIG, Config, get_artifacts_dir, merge_config
+from gw2ml.utils import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("pipelines.forecast")
 
 
 def _load_best_artifact(item_id: int, config: Config) -> tuple[Any, Dict[str, Any]]:
@@ -74,7 +74,7 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
     - future forecast for the next horizon steps
     - a short backtest (historical forecasts) for quick performance view
     """
-    logger.info(f"Starting forecast for item {item_id}")
+    logger.info(f"Forecasting for item {item_id} (retrain={retrain})")
     config = merge_config(DEFAULT_CONFIG, override_config)
     horizon = int(config["forecast"]["horizon"])
     backtest_split = float(config["forecast"].get("backtest_split", 0.8))  # Default to 80/20 split
@@ -131,17 +131,33 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
         if missing_models:
             logger.warning(f"  Missing artifacts for: {missing_models}")
 
-    # If retrain was requested or artifacts are missing, retrain then reload artifacts.
-    if retrain or missing_models:
-        logger.info("  Triggering retraining...")
-        if retrain or missing_models:
-            from gw2ml.pipelines.train import train_items
+    # If retrain was requested, do full grid search.
+    # If artifacts are missing and retrain is False, we use zero-shot fallback.
+    logger.info("  Triggering retraining...")
+    if retrain:
+        from gw2ml.pipelines.train import train_items
+        train_items([item_id], override_config=override_config)
+        loaded = _load_all_artifacts(item_id, config, allowed_models=requested_models or None)
+        if requested_models:
+            found_names = {name for name, _, _ in loaded}
+            missing_models = [m for m in requested_models if m not in found_names]
 
-            train_items([item_id], override_config=override_config)
-            loaded = _load_all_artifacts(item_id, config, allowed_models=requested_models or None)
-            if requested_models:
-                found_names = {name for name, _, _ in loaded}
-                missing_models = [m for m in requested_models if m not in found_names]
+    if missing_models:
+        from gw2ml.modeling.registry import get_model
+        for model_name in missing_models[:]:  # iterate over copy
+            try:
+                model_cls = get_model(model_name)
+                model_obj = model_cls()
+                metadata = {
+                    "model_name": model_name,
+                    "params": model_obj.get_params(),
+                    "trained_at": "zero-shot/default",
+                    "is_pretrained_default": True
+                }
+                loaded.append((model_name, model_obj, metadata))
+                missing_models.remove(model_name)
+            except Exception:
+                pass
 
     if not loaded:
         error_msg = (
@@ -165,6 +181,13 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
         # STEP 2: Evaluate on test data (model trained ONLY on train data)
         try:
             logger.debug(f"    Running train/test evaluation (model NEVER sees test data during training)...")
+            
+            # For foundation models like Chronos, we don't need to retrain at each step of backtest
+            retrain_at_step = True
+            if "Chronos" in model_name:
+                logger.info(f"    Disabling per-step retraining for foundation model {model_name}")
+                retrain_at_step = False
+
             backtest_result = walk_forward_backtest(
                 model_class=model_obj.__class__,
                 model_params=metadata.get("params", {}),
@@ -174,6 +197,7 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
                 forecast_horizon=horizon,
                 stride=1,
                 verbose=False,
+                retrain=retrain_at_step,
             )
             hist_forecast = backtest_result.forecasts
             actual_series = backtest_result.actuals

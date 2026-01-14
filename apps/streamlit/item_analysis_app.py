@@ -6,6 +6,9 @@ import plotly.express as px
 import seaborn as sns
 from gw2ml.data.loaders import list_items, load_gw2_series_batch
 from gw2ml.evaluation.adf import perform_adf_test
+from gw2ml.utils import get_logger
+
+logger = get_logger("item_analysis_app")
 
 CACHE_TIMEOUT = 60 * 60 * 24 * 7  # 7 days in seconds
 
@@ -35,6 +38,7 @@ def cached_load_gw2_series_batch(item_ids, days_back, value_column):
 
 def render_item_analysis_tab() -> None:
     """Render the item analysis tab content."""
+    logger.info("Rendering Item Analysis tab")
     st.title("GW2ML: Item Analysis")
     with st.sidebar:
         st.header("Item Analysis Configuration")
@@ -52,7 +56,7 @@ def render_item_analysis_tab() -> None:
             help="Reducing frequency improves performance, OInly used for Hisotry Plot. ADF etc will still use all data within histroy range."
         )
         show_history = st.checkbox("Show history graph", value=False)
-        show_distribution = st.checkbox("Show distribution (box plot)", value=False)
+        show_distribution = st.checkbox("Show distribution (pairplot)", value=False)
         show_adf = st.checkbox("Augmented Dickey Fuller", value=False)
         st.info("Configure item analysis parameters here")
 

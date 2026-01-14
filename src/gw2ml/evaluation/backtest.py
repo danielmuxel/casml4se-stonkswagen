@@ -55,6 +55,7 @@ def walk_forward_backtest(
     verbose: bool = False,
     train_series: TimeSeries | None = None,
     test_series: TimeSeries | None = None,
+    retrain: bool = True,
 ) -> BacktestResult:
     """
     Perform walk-forward backtesting with guaranteed data leakage prevention.
@@ -83,6 +84,8 @@ def walk_forward_backtest(
         verbose: Whether to print progress information (default: False)
         train_series: Optional training data only (for train/test split mode)
         test_series: Optional test data only (for train/test split mode)
+        retrain: Whether to retrain the model at each step (default: True).
+                 Set to False for foundation models or very slow models.
 
     Returns:
         BacktestResult containing forecasts, actuals, and metadata
@@ -128,6 +131,7 @@ def walk_forward_backtest(
             logger.info(f"Starting train/test split backtest for {model_class.__name__}")
             logger.info(f"  Train size: {len(train_series)}, Test size: {len(test_series)}")
             logger.info(f"  Forecast horizon: {forecast_horizon}, Stride: {stride}")
+            logger.info(f"  Retrain: {retrain}")
 
         # Fit model on training data ONLY
         logger.debug(f"Fitting {fresh_model.name} on training data only...")
@@ -135,7 +139,7 @@ def walk_forward_backtest(
 
         # Generate rolling forecasts for the test period
         # We'll forecast step-by-step through the test period, retraining as we go
-        logger.debug(f"Generating rolling forecasts for test period...")
+        logger.debug(f"Generating rolling forecasts for test period (retrain={retrain})...")
 
         # Combine train + test for historical_forecasts to work properly
         combined_series = train_series.append(test_series)
@@ -148,7 +152,7 @@ def walk_forward_backtest(
             start=train_end_idx,  # Start at end of training data
             forecast_horizon=forecast_horizon,
             stride=stride,
-            retrain=True,  # Retrain at each step using only past data
+            retrain=retrain,  # Use provided retrain parameter
             verbose=verbose,
         )
 

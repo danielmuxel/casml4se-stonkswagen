@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import time
 from itertools import product
 from pathlib import Path
@@ -14,8 +13,9 @@ from gw2ml.data.loaders import GW2Series, load_gw2_series
 from gw2ml.metrics.registry import get_metric
 from gw2ml.modeling.registry import get_default_grid, get_model
 from gw2ml.pipelines.config import DEFAULT_CONFIG, Config, get_artifacts_dir, merge_config
+from gw2ml.utils import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("pipelines.train")
 
 
 def _iter_param_grid(grid: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
@@ -95,6 +95,7 @@ def train_items(item_ids: List[int], override_config: Config | None = None) -> L
 
     Returns a list of metadata dictionaries (one per item).
     """
+    logger.info(f"Training items: {item_ids}")
     config = merge_config(DEFAULT_CONFIG, override_config)
     artifacts_root = get_artifacts_dir(config)
     metric_cfg = config.get("metric", {})

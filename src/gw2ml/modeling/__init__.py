@@ -65,6 +65,12 @@ _XGB_DEFAULT_GRID = {
     "reg_lambda": [1.0],
 }
 
+_CHRONOS2_DEFAULT_GRID = {
+    "epochs": [50],
+    "input_chunk_length": [168],
+    "output_chunk_length": [12],
+}
+
 # Register built-in models on import; new models can register here too.
 register_model("ARIMA", ARIMAModel, default_grid=_ARIMA_DEFAULT_GRID)
 register_model(
@@ -73,7 +79,7 @@ register_model(
     default_grid=_ES_DEFAULT_GRID,
 )
 register_model("XGBoost", XGBoostModel, default_grid=_XGB_DEFAULT_GRID)
-register_model("Chronos2", Chronos2)
+register_model("Chronos2", Chronos2, default_grid=_CHRONOS2_DEFAULT_GRID)
 # Example for future additions:
 # from .nbeats import NBEATSModel
 # register_model("NBEATS", NBEATSModel, default_grid={"num_blocks": [2, 3]})

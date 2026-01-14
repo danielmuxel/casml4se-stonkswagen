@@ -13,6 +13,9 @@ from gw2ml.modeling.registry import list_models
 from gw2ml.pipelines.config import DEFAULT_CONFIG, merge_config
 from gw2ml.pipelines.forecast import forecast_item
 from gw2ml.pipelines.train import train_items
+from gw2ml.utils import get_logger
+
+logger = get_logger("forecast_app")
 
 
 ALLOWED_CONFIG_KEYS = {"data", "split", "forecast", "metric", "models"}
@@ -153,11 +156,12 @@ def render_forecast_tab() -> None:
         metrics = st.multiselect("Metrics to compute", options=available_metrics, default=available_metrics)
 
     st.subheader("Forecast")
-    target_item = st.text_input("Forecast item_id", "19702")
+    target_item = st.text_input("Forecast item_id", "19697")
     retrain_before = st.checkbox("Retrain before forecast (full search)", value=False)
     if st.button("Run forecast"):
         start_time = time.time()
         try:
+            logger.info(f"Running forecast for item {target_item} (retrain={retrain_before})")
             payload = _build_override_config(
                 target_item, days_back, value_column, horizon, selected_models, primary_metric, metrics
             )
