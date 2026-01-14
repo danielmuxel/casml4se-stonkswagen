@@ -181,6 +181,13 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
         # STEP 2: Evaluate on test data (model trained ONLY on train data)
         try:
             logger.debug(f"    Running train/test evaluation (model NEVER sees test data during training)...")
+            
+            # For foundation models like Chronos, we don't need to retrain at each step of backtest
+            retrain_at_step = True
+            if "Chronos" in model_name:
+                logger.info(f"    Disabling per-step retraining for foundation model {model_name}")
+                retrain_at_step = False
+
             backtest_result = walk_forward_backtest(
                 model_class=model_obj.__class__,
                 model_params=metadata.get("params", {}),
@@ -190,6 +197,7 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
                 forecast_horizon=horizon,
                 stride=1,
                 verbose=False,
+                retrain=retrain_at_step,
             )
             hist_forecast = backtest_result.forecasts
             actual_series = backtest_result.actuals

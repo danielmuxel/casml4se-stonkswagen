@@ -59,6 +59,13 @@ class Chronos2(BaseModel):
         build_params.pop("epochs", None)
         model_hub_name = build_params.pop("model_hub_name", "autogluon/chronos-2-synth")
 
+        # Disable progress bars to avoid log spam
+        if "pl_trainer_kwargs" not in build_params:
+            build_params["pl_trainer_kwargs"] = {}
+        
+        if "enable_progress_bar" not in build_params["pl_trainer_kwargs"]:
+            build_params["pl_trainer_kwargs"]["enable_progress_bar"] = False
+
         logger.info(f"Building Chronos2Model with hub name: {model_hub_name}")
         return Chronos2Model(
             model_name=model_hub_name,
@@ -82,7 +89,7 @@ class Chronos2(BaseModel):
         # Chronos is a foundation model. 'fit' can be used for fine-tuning.
         # Darts requires fit() to be called to initialize internal state, 
         # but we can use epochs=0 for zero-shot.
-        epochs = kwargs.pop("epochs", self.params.get("epochs", 0))
+        epochs = 0
         logger.info(f"Fitting Chronos2 model (epochs={epochs})")
         self._model.fit(series, epochs=epochs,verbose=True, **kwargs)
         self._context_series = series
