@@ -133,7 +133,8 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
 
     # If retrain was requested, do full grid search.
     # If artifacts are missing and retrain is False, we use zero-shot fallback.
-    logger.info("  Triggering retraining...")if retrain:
+    logger.info("  Triggering retraining...")
+    if retrain:
         from gw2ml.pipelines.train import train_items
         train_items([item_id], override_config=override_config)
         loaded = _load_all_artifacts(item_id, config, allowed_models=requested_models or None)
