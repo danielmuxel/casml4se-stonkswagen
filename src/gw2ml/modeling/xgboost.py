@@ -81,7 +81,7 @@ class XGBoostModel(BaseModel):
     ) -> TimeSeries:
         """XGBoost can use retrain=False for faster backtesting."""
         if self._model is None:
-            raise ValueError("Model must be fitted first. Call fit().")
+            self._model = self.build_model()
         return self._model.historical_forecasts(
             series=series, start=start, forecast_horizon=forecast_horizon,
             stride=stride, retrain=retrain, **kwargs,

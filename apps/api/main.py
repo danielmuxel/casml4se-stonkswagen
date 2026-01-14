@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
@@ -9,6 +10,13 @@ from gw2ml.pipelines.config import DEFAULT_CONFIG, merge_config
 from gw2ml.pipelines.forecast import forecast_item
 from gw2ml.pipelines.train import train_items
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 ALLOWED_CONFIG_KEYS = {"data", "split", "forecast", "metric", "models"}
 
@@ -45,23 +53,30 @@ def health() -> Dict[str, str]:
 
 @app.post("/train")
 def train(req: TrainRequest) -> Dict[str, Any]:
+    logger.info(f"POST /train - item_ids={req.item_ids}")
     try:
         sanitized = _sanitize_config(req.override_config)
         results = train_items(req.item_ids, override_config=merge_config(DEFAULT_CONFIG, sanitized))
+        logger.info(f"Training complete - processed {len(results)} item(s)")
         return {"items": results}
     except Exception as exc:  # pragma: no cover - surface errors to client
+        logger.error(f"Training failed: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/forecast")
 def forecast(req: ForecastRequest) -> Dict[str, Any]:
+    logger.info(f"POST /forecast - item_id={req.item_id}")
     try:
         sanitized = _sanitize_config(req.override_config)
         result = forecast_item(req.item_id, override_config=merge_config(DEFAULT_CONFIG, sanitized))
+        logger.info(f"Forecast complete for item {req.item_id}")
         return result
     except FileNotFoundError as exc:
+        logger.warning(f"Forecast failed - artifacts not found: {exc}")
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:  # pragma: no cover
+        logger.error(f"Forecast failed: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc))
 
 

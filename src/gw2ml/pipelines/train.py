@@ -102,36 +102,53 @@ def train_items(item_ids: List[int], override_config: Config | None = None) -> L
     primary_metric = metric_cfg.get("primary", "mape")
     metric_names: List[str] = metric_cfg.get("metrics", [primary_metric])
 
+    logger.info(f"Starting training for {len(item_ids)} item(s): {item_ids}")
+    logger.info(f"Models to train: {[m['name'] for m in config['models']]}")
+
     results: List[Dict[str, Any]] = []
 
-    for item_id in item_ids:
-        logger.info(f"Processing item {item_id}")
+    for idx, item_id in enumerate(item_ids, 1):
+        logger.info(f"[{idx}/{len(item_ids)}] Processing item {item_id}...")
         series_meta = load_gw2_series(
             item_id=item_id,
             days_back=config["data"]["days_back"],
             value_column=config["data"]["value_column"],
             fill_missing_dates=config["data"]["fill_missing_dates"],
+            resample_freq=config["data"].get("resample_freq"),
         )
+        logger.info(f"  Loaded {series_meta.num_points} data points for item {item_id}")
 
         if series_meta.num_points < config["data"]["min_points"]:
+            logger.warning(f"  Item {item_id} has insufficient data ({series_meta.num_points} < {config['data']['min_points']}), skipping")
             continue
 
         train_ts, val_ts, test_ts = _split_series(series_meta, config["split"])
+        logger.info(f"  Split: train={len(train_ts)}, val={len(val_ts) if val_ts else 0}, test={len(test_ts) if test_ts else 0}")
 
         per_model_results: List[Dict[str, Any]] = []
 
         for model_spec in config["models"]:
             model_name = model_spec["name"]
-            model_cls = get_model(model_name)
-            grid = model_spec.get("grid") or get_default_grid(model_name)
+            logger.info(f"  Training {model_name}...")
 
-            model_best_score = float("inf")
-            model_best: Any = None
-            model_best_params: Dict[str, Any] = {}
-            model_best_val: Dict[str, float] | None = None
-            model_best_test: Dict[str, float] | None = None
+            try:
+                model_cls = get_model(model_name)
+                grid = model_spec.get("grid") or get_default_grid(model_name)
 
-            for params in _iter_param_grid(grid):
+                grid_size = sum(1 for _ in _iter_param_grid(grid))
+                logger.info(f"    Grid search: {grid_size} parameter combination(s)")
+
+                model_best_score = float("inf")
+                model_best: Any = None
+                model_best_params: Dict[str, Any] = {}
+                model_best_val: Dict[str, float] | None = None
+                model_best_test: Dict[str, float] | None = None
+            except Exception as exc:
+                logger.error(f"    ✗ Failed to initialize {model_name}: {exc}", exc_info=False)
+                logger.warning(f"    Skipping {model_name} entirely due to initialization error")
+                continue
+
+            for param_idx, params in enumerate(_iter_param_grid(grid), 1):
                 if model_name == "ExponentialSmoothing":
                     sp = params.get("seasonal_periods")
                     min_points_needed = 10
@@ -140,12 +157,21 @@ def train_items(item_ids: List[int], override_config: Config | None = None) -> L
                     if len(train_ts) < min_points_needed:
                         continue
 
-                candidate = model_cls(**params)
+                if grid_size > 1:
+                    logger.debug(f"    [{param_idx}/{grid_size}] Testing params: {params}")
+
                 try:
+                    candidate = model_cls(**params)
                     candidate.fit(train_ts)
                 except Exception as exc:
-                    # Skip failing candidate; e.g., insufficient data for seasonal initialization.
-                    logger.warning(f"Skipping {model_name} with params={params} due to error: {exc}")
+                    # Skip failing candidate; e.g., insufficient data, MPS/GPU incompatibility, etc.
+                    exc_msg = str(exc)
+                    if "MPS" in exc_msg or "mps" in exc_msg or "float32" in exc_msg or "dtype" in exc_msg:
+                        logger.warning(f"    Skipped {model_name} with params={params}: Hardware incompatibility (MPS/GPU issue)")
+                    elif "data" in exc_msg.lower() or "points" in exc_msg.lower():
+                        logger.debug(f"    Skipped {model_name} with params={params}: Insufficient data")
+                    else:
+                        logger.warning(f"    Skipped {model_name} with params={params}: {exc}")
                     continue
 
                 local_val_ts = val_ts or test_ts
@@ -167,30 +193,41 @@ def train_items(item_ids: List[int], override_config: Config | None = None) -> L
                 model_best_val = val_metrics
 
             if model_best is None:
+                logger.warning(f"    ✗ No valid model found for {model_name} (all parameter combinations failed)")
                 continue
 
-            combined_train = train_ts if val_ts is None else TimeSeries.concatenate([train_ts, val_ts])
-            model_best.fit(combined_train)
+            logger.info(f"    Best {model_name}: {primary_metric}={model_best_score:.4f}, params={model_best_params}")
 
-            model_best_test_metrics: Dict[str, float] | None = None
-            if test_ts is not None:
-                test_pred = model_best.predict(n=len(test_ts))
-                model_best_test_metrics = _compute_metrics(metric_names, test_ts, test_pred)
+            try:
+                combined_train = train_ts if val_ts is None else TimeSeries.concatenate([train_ts, val_ts])
+                logger.debug(f"    Retraining {model_name} on combined train+val data...")
+                model_best.fit(combined_train)
 
-            per_model_results.append(
-                {
-                    "model_name": model_name,
-                    "params": model_best_params,
-                    "primary_metric": primary_metric,
-                    "metrics": {
-                        "val": model_best_val,
-                        "test": model_best_test_metrics,
-                    },
-                    "model_obj": model_best,
-                }
-            )
+                model_best_test_metrics: Dict[str, float] | None = None
+                if test_ts is not None:
+                    test_pred = model_best.predict(n=len(test_ts))
+                    model_best_test_metrics = _compute_metrics(metric_names, test_ts, test_pred)
+
+                per_model_results.append(
+                    {
+                        "model_name": model_name,
+                        "params": model_best_params,
+                        "primary_metric": primary_metric,
+                        "metrics": {
+                            "val": model_best_val,
+                            "test": model_best_test_metrics,
+                        },
+                        "model_obj": model_best,
+                    }
+                )
+            except Exception as exc:
+                logger.error(f"    ✗ Failed to retrain {model_name} on combined data: {exc}", exc_info=False)
+                logger.warning(f"    Skipping {model_name} (retraining failed - possible hardware incompatibility)")
+                continue
 
         if not per_model_results:
+            logger.error(f"  ✗ No models successfully trained for item {item_id} - all models failed!")
+            logger.info(f"  Common causes: hardware incompatibility (e.g., MPS/GPU issues), insufficient data, or dependency conflicts")
             continue
 
         # Pick global best by primary metric using val metric.
@@ -198,13 +235,11 @@ def train_items(item_ids: List[int], override_config: Config | None = None) -> L
             per_model_results,
             key=lambda m: float(m["metrics"]["val"].get(primary_metric, float("inf")) if m["metrics"]["val"] else float("inf")),
         )
-        logger.info(
-            f"Best model for item {item_id}: {global_best['model_name']} "
-            f"({primary_metric}: {global_best['metrics']['val'].get(primary_metric):.4f})"
-        )
+        logger.info(f"  Best overall model: {global_best['model_name']} ({primary_metric}={global_best['metrics']['val'].get(primary_metric, 'N/A')})")
 
         item_dir = artifacts_root / str(item_id)
         item_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"  Saving artifacts to {item_dir}")
 
         # Save per-model artifacts
         for model_entry in per_model_results:
@@ -252,7 +287,9 @@ def train_items(item_ids: List[int], override_config: Config | None = None) -> L
         _maybe_upload_s3(config, item_dir)
 
         results.append(global_meta)
+        logger.info(f"  ✓ Item {item_id} complete")
 
+    logger.info(f"Training complete! Processed {len(results)}/{len(item_ids)} item(s)")
     return results
 
 

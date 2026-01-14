@@ -33,12 +33,16 @@ from .registry import get_default_grid, get_model, list_models, register_model
 from .xgboost import XGBoostModel
 
 # Default grids used when a model-specific grid is not provided via config.
+# ARIMA grid reduced to single configuration for faster training
+# ARIMA(1,1,1) is a good default for most time series
 _ARIMA_DEFAULT_GRID = {
-    "p": [0, 1, 2],
-    "d": [0, 1],
-    "q": [0, 1, 2],
-    "seasonal_order": [(0, 0, 0, 0)],
+    "p": [1],  # Reduced from [0, 1, 2] - autoregressive order
+    "d": [1],  # Reduced from [0, 1] - differencing order
+    "q": [1],  # Reduced from [0, 1, 2] - moving average order
+    "seasonal_order": [(0, 0, 0, 0)],  # No seasonality
 }
+# This reduces grid search from 18 combinations to just 1
+# For more thorough search, increase to: p=[1,2], d=[1], q=[1,2] (4 combinations)
 
 # ExponentialSmoothing requires special handling - can't grid search independently
 # because seasonal and seasonal_periods must be coordinated
