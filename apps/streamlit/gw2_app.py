@@ -15,13 +15,11 @@ def main() -> None:
     setup_logging()
     logger.info("Starting GW2ML Streamlit application")
     
-    st.set_page_config(page_title="GW2ML Application", layout="wide")
+    st.set_page_config(page_title="Stonkswagen", layout="wide")
     
     st.sidebar.title("Navigation")
     selection = st.sidebar.radio("Go to", ["📈 Forecast", "🧪 Evaluation", "🔍 Item Analysis"])
 
-    st.header("🎮 GW2ML: Guild Wars 2 Trading Post Analysis")
-    
     logger.info(f"Navigating to {selection}")
     if selection == "📈 Forecast":
         render_forecast_tab()

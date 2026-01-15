@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from app_header import render_page_header
 from gw2ml.metrics.registry import get_metric, list_metrics
 from gw2ml.modeling.registry import list_models
 from gw2ml.data.loaders import list_items
@@ -154,6 +155,7 @@ def _render_evaluation_result(
     metrics: List[str],
     *,
     heading: str | None = None,
+    legend_bottom: bool = False,
 ) -> None:
     if heading:
         st.markdown(f"#### {heading}")
@@ -203,6 +205,10 @@ def _render_evaluation_result(
             title=f"Future forecasts for item {item_id}",
             color_discrete_map=color_map,
         )
+        if legend_bottom:
+            fig_future.update_layout(
+                legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5)
+            )
         st.plotly_chart(fig_future, use_container_width=True)
 
     hist_rows = []
@@ -239,6 +245,10 @@ def _render_evaluation_result(
                 d.showlegend = True
                 d.line.color = "#1f77b4"
                 fig_h.add_trace(d)
+        if legend_bottom:
+            fig_h.update_layout(
+                legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5)
+            )
         st.plotly_chart(fig_h, use_container_width=True)
 
     if models_payload:
@@ -277,11 +287,28 @@ def _render_evaluation_result(
         if metrics_data:
             df_metrics = pd.DataFrame(metrics_data)
             st.subheader("Model Performance Metrics")
-            st.dataframe(df_metrics, use_container_width=True, hide_index=True)
+
+            metric_cols = [col for col in df_metrics.columns if col != "Model"]
+
+            def highlight_min(s: pd.Series) -> list[str]:
+                """Highlight the minimum value in a Series (lowest error is best)."""
+                if s.name not in metric_cols:
+                    return [""] * len(s)
+                numeric_s = pd.to_numeric(s, errors="coerce")
+                if numeric_s.isna().all():
+                    return [""] * len(s)
+                is_min = numeric_s == numeric_s.min()
+                return [
+                    "background-color: #2E8B57; font-weight: bold" if v else ""
+                    for v in is_min
+                ]
+
+            styled_df = df_metrics.style.apply(highlight_min)
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 
 def render_evaluation_tab() -> None:
-    st.title("GW2ML: Evaluation & Backtest")
+    render_page_header("GW2ML: Evaluation & Backtest")
 
     with st.sidebar:
         st.header("Evaluation Configuration")
@@ -428,6 +455,7 @@ def render_evaluation_tab() -> None:
                                         item_id,
                                         metrics,
                                         heading=None,
+                                        legend_bottom=len(item_results) >= 2,
                                     )
 
         except Exception as exc:  # pragma: no cover

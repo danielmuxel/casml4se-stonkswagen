@@ -8,6 +8,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from app_header import render_page_header
 from gw2ml.data.loaders import list_items, load_gw2_series
 from gw2ml.modeling.registry import list_models
 from gw2ml.pipelines.config import DEFAULT_CONFIG
@@ -574,7 +575,7 @@ def _build_profitability_summary(
 
 
 def render_forecast_tab() -> None:
-    st.title("GW2ML: Forecast")
+    render_page_header("GW2ML: Forecast")
 
     with st.sidebar:
         st.header("Forecast Configuration")

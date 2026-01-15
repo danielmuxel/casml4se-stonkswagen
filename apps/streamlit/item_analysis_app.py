@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 import seaborn as sns
+from app_header import render_page_header
 from gw2ml.data.loaders import list_items, load_gw2_series_batch
 from gw2ml.evaluation.adf import perform_adf_test
 from gw2ml.utils import get_logger
@@ -39,7 +40,7 @@ def cached_load_gw2_series_batch(item_ids, days_back, value_column):
 def render_item_analysis_tab() -> None:
     """Render the item analysis tab content."""
     logger.info("Rendering Item Analysis tab")
-    st.title("GW2ML: Item Analysis")
+    render_page_header("GW2ML: Item Analysis")
     with st.sidebar:
         st.header("Item Analysis Configuration")
         history_days = st.slider(
