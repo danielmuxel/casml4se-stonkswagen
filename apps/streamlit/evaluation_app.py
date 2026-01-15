@@ -9,6 +9,7 @@ import streamlit as st
 
 from gw2ml.metrics.registry import get_metric, list_metrics
 from gw2ml.modeling.registry import list_models
+from gw2ml.data.loaders import list_items
 from gw2ml.pipelines.config import DEFAULT_CONFIG
 from gw2ml.pipelines.forecast import forecast_item
 from gw2ml.utils import get_logger
@@ -23,6 +24,13 @@ VALUE_COLUMNS = [
     "sell_quantity",
 ]
 RESAMPLE_OPTIONS = ["5min", "15min", "30min", "1h", "4h", "12h", "1d"]
+
+CACHE_TIMEOUT = 60 * 60 * 24 * 7  # 7 days
+
+
+@st.cache_data(ttl=CACHE_TIMEOUT, persist="disk", show_spinner=True)
+def cached_list_items(limit: int = 30000):
+    return list_items(limit=limit)
 
 
 def _validate_eval_inputs(
@@ -283,18 +291,34 @@ def render_evaluation_tab() -> None:
         )
 
     st.subheader("Evaluation")
-    target_item = st.text_input("Evaluate item_id", "19976")
+    items = cached_list_items()
+    default_ids = {"19976"}
+    default_items = [item for item in items if str(item.get("item_id")) in default_ids]
+    selected_items = st.multiselect(
+        "Search for items",
+        options=items,
+        default=default_items,
+        format_func=lambda x: f"[{x['item_id']}] {x['item_name']}",
+        help="Type to search and select one or more items",
+    )
     if st.button("Run evaluation"):
         start_time = time.time()
         try:
-            is_valid, error_msg = _validate_eval_inputs(target_item, selected_models, days_back)
+            if not selected_items:
+                st.error("Please select at least one item to evaluate.")
+                return
+            is_valid, error_msg = _validate_eval_inputs(str(selected_items[0]["item_id"]), selected_models, days_back)
             if not is_valid:
                 st.error(f"❌ Validation failed: {error_msg}")
                 return
 
-            item_id = int(target_item)
+            item_ids = [int(item["item_id"]) for item in selected_items]
+            item_name_map = {
+                int(item["item_id"]): item.get("item_name", str(item["item_id"]))
+                for item in selected_items
+            }
 
-            with st.status(f"Processing evaluation for item {item_id}...", expanded=True) as status:
+            with st.status("Processing evaluations...", expanded=True) as status:
                 if retrain_before:
                     st.write(f"🔄 Retraining models: {', '.join(selected_models)}")
 
@@ -311,52 +335,61 @@ def render_evaluation_tab() -> None:
                     st.error("Please select at least one field to evaluate.")
                     return
 
-                results: Dict[str, Dict[str, Dict[str, Any]]] = {}
-                total_steps = len(resample_choices) * len(selected_columns)
+                results: Dict[int, Dict[str, Dict[str, Dict[str, Any]]]] = {}
+                total_steps = len(item_ids) * len(resample_choices) * len(selected_columns)
                 progress = st.progress(0)
                 step_idx = 0
-                for label, freq in resample_choices:
-                    st.write(f"⚙️ Evaluating resample: {label}")
-                    results[label] = {}
-                    for value_column in selected_columns:
-                        step_idx += 1
-                        payload = _build_override_config(
-                            days_back,
-                            value_column,
-                            horizon,
-                            selected_models,
-                            primary_metric,
-                            metrics,
-                            freq,
-                            force_grid_search,
-                        )
-                        result = forecast_item(
-                            item_id,
-                            override_config=payload,
-                            retrain=retrain_before,
-                            include_backtest=True,
-                            include_history=False,
-                        )
-                        results[label][value_column] = result
-                        progress.progress(step_idx / total_steps)
+                for item_id in item_ids:
+                    item_label = item_name_map.get(item_id, str(item_id))
+                    results[item_id] = {}
+                    for label, freq in resample_choices:
+                        st.write(f"⚙️ Evaluating {item_label} ({label})")
+                        results[item_id][label] = {}
+                        for value_column in selected_columns:
+                            step_idx += 1
+                            payload = _build_override_config(
+                                days_back,
+                                value_column,
+                                horizon,
+                                selected_models,
+                                primary_metric,
+                                metrics,
+                                freq,
+                                force_grid_search,
+                            )
+                            result = forecast_item(
+                                item_id,
+                                override_config=payload,
+                                retrain=retrain_before,
+                                include_backtest=True,
+                                include_history=False,
+                            )
+                            results[item_id][label][value_column] = result
+                            progress.progress(step_idx / total_steps)
 
-                status.update(label=f"✓ Evaluation complete for item {item_id}", state="complete")
+                status.update(label="✓ Evaluations complete", state="complete")
 
             elapsed_time = time.time() - start_time
             st.success(f"Evaluation generated in {elapsed_time:.2f} seconds.")
             if results:
-                cols = st.columns(len(results))
-                for col, (label, per_field) in zip(cols, results.items()):
-                    with col:
-                        st.subheader(f"Resample: {label}")
-                        for value_column, result in per_field.items():
-                            st.markdown(f"#### {value_column}")
-                            _render_evaluation_result(
-                                result,
-                                item_id,
-                                metrics,
-                                heading=value_column,
-                            )
+                for item_id in item_ids:
+                    item_results = results.get(item_id)
+                    if not item_results:
+                        continue
+                    item_label = item_name_map.get(item_id, str(item_id))
+                    with st.expander(f"[{item_id}] {item_label}", expanded=False):
+                        cols = st.columns(len(item_results))
+                        for col, (label, per_field) in zip(cols, item_results.items()):
+                            with col:
+                                st.subheader(f"Resample: {label}")
+                                for value_column, result in per_field.items():
+                                    st.markdown(f"#### {value_column}")
+                                    _render_evaluation_result(
+                                        result,
+                                        item_id,
+                                        metrics,
+                                        heading=value_column,
+                                    )
 
         except Exception as exc:  # pragma: no cover
             st.error(f"Evaluation failed: {exc}")

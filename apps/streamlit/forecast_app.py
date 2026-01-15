@@ -8,7 +8,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from gw2ml.data.loaders import load_gw2_series
+from gw2ml.data.loaders import list_items, load_gw2_series
 from gw2ml.modeling.registry import list_models
 from gw2ml.pipelines.config import DEFAULT_CONFIG
 from gw2ml.pipelines.forecast import forecast_item
@@ -33,6 +33,8 @@ MODEL_COLOR_MAP = {
 }
 FALLBACK_MODEL_COLORS = ["#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
 
+CACHE_TIMEOUT = 60 * 60 * 24 * 7  # 7 days
+
 
 def _model_color(model_name: str) -> str:
     if model_name in MODEL_COLOR_MAP:
@@ -44,6 +46,11 @@ def _model_color(model_name: str) -> str:
     digest = hashlib.md5(model_name.encode("utf-8")).hexdigest()
     idx = int(digest, 16) % len(FALLBACK_MODEL_COLORS)
     return FALLBACK_MODEL_COLORS[idx]
+
+
+@st.cache_data(ttl=CACHE_TIMEOUT, persist="disk", show_spinner=True)
+def cached_list_items(limit: int = 30000):
+    return list_items(limit=limit)
 
 
 def _seconds_to_next_five_minute(now: datetime) -> int:
@@ -572,85 +579,107 @@ def render_forecast_tab() -> None:
         )
 
     st.subheader("Forecast")
-    target_item = st.text_input("Forecast item_id", "19976")
+
+    items = cached_list_items()
+    default_ids = {"19976"}
+    default_items = [item for item in items if str(item.get("item_id")) in default_ids]
+    selected_items = st.multiselect(
+        "Search for items",
+        options=items,
+        default=default_items,
+        format_func=lambda x: f"[{x['item_id']}] {x['item_name']}",
+        help="Type to search and select one or more items",
+    )
 
     if st.button("Run forecast"):
         start_time = time.time()
         try:
-            is_valid, error_msg = _validate_forecast_inputs(target_item, selected_models, int(horizon))
-            if not is_valid:
-                st.error(f"❌ Validation failed: {error_msg}")
-                return
             if not selected_columns:
                 st.error("Please select at least one field to forecast.")
                 return
+            if not selected_items:
+                st.error("Please select at least one item to forecast.")
+                return
 
-            item_id = int(target_item)
+            item_ids = [int(item["item_id"]) for item in selected_items]
+            item_name_map = {
+                int(item["item_id"]): item.get("item_name", str(item["item_id"]))
+                for item in selected_items
+            }
+            is_valid, error_msg = _validate_forecast_inputs(str(item_ids[0]), selected_models, int(horizon))
+            if not is_valid:
+                st.error(f"❌ Validation failed: {error_msg}")
+                return
+
             logger.info(
-                f"Running forecast for item {item_id} (days_back={days_back})"
+                f"Running forecast for {len(item_ids)} item(s) (days_back={days_back})"
             )
 
-            results: Dict[str, Dict[str, Dict[str, Any]]] = {}
+            results: Dict[int, Dict[str, Dict[str, Dict[str, Any]]]] = {}
             missing_models: set[str] = set()
 
-            with st.status(f"Processing forecast for item {item_id}...", expanded=True) as status:
+            with st.status("Processing forecasts...", expanded=True) as status:
                 resample_choices = _normalize_resample_options(resample_labels)
                 if not resample_choices:
                     st.error("Please select at least one resample option.")
                     return
 
-                total_steps = len(resample_choices) * len(selected_columns)
+                total_steps = len(item_ids) * len(resample_choices) * len(selected_columns)
                 progress = st.progress(0)
                 step_text = st.empty()
 
                 step_idx = 0
-                for resample_label, resample_freq in resample_choices:
-                    step_text.write(f"📊 Loading history ({resample_label})")
-                    series_meta = load_gw2_series(
-                        item_id=item_id,
-                        days_back=days_back,
-                        value_column="buy_unit_price",
-                        fill_missing_dates=DEFAULT_CONFIG["data"]["fill_missing_dates"],
-                        resample_freq=resample_freq,
-                    )
-                    history_points = series_meta.num_points
-                    horizon_steps = int(horizon)
-                    st.caption(
-                        f"[{resample_label}] History contains {history_points} points. "
-                        f"Forecast horizon: {horizon_steps} steps."
-                    )
-
-                    step_text.write(
-                        f"🔮 Generating {horizon_steps}-step forecasts ({resample_label})"
-                    )
-
-                    results[resample_label] = {}
-                    for column in selected_columns:
-                        step_idx += 1
-                        step_text.write(
-                            f"🔁 Forecasting {column} ({resample_label}) "
-                            f"[{step_idx}/{total_steps}]"
-                        )
-                        override_config = _build_override_config(
+                horizon_steps = int(horizon)
+                for item_id in item_ids:
+                    results[item_id] = {}
+                    item_label = item_name_map.get(item_id, str(item_id))
+                    for resample_label, resample_freq in resample_choices:
+                        step_text.write(f"📊 Loading history ({item_label}, {resample_label})")
+                        series_meta = load_gw2_series(
+                            item_id=item_id,
                             days_back=days_back,
-                            value_column=column,
-                            horizon=horizon_steps,
-                            selected_models=selected_models,
+                            value_column="buy_unit_price",
+                            fill_missing_dates=DEFAULT_CONFIG["data"]["fill_missing_dates"],
                             resample_freq=resample_freq,
-                            force_grid_search=force_grid_search,
                         )
-                        result = forecast_item(
-                            item_id,
-                            override_config=override_config,
-                            retrain=retrain_before,
-                            include_backtest=False,
-                            include_history=True,
+                        history_points = series_meta.num_points
+                        st.caption(
+                            f"[{item_label} | {resample_label}] History contains {history_points} points. "
+                            f"Forecast horizon: {horizon_steps} steps."
                         )
-                        results[resample_label][column] = result
-                        missing_models.update(result.get("missing_models", []))
-                        progress.progress(step_idx / total_steps)
 
-                status.update(label=f"✓ Forecast complete for item {item_id}", state="complete")
+                        step_text.write(
+                            f"🔮 Generating {horizon_steps}-step forecasts "
+                            f"({item_label}, {resample_label})"
+                        )
+
+                        results[item_id][resample_label] = {}
+                        for column in selected_columns:
+                            step_idx += 1
+                            step_text.write(
+                                f"🔁 Forecasting {column} ({item_label}, {resample_label}) "
+                                f"[{step_idx}/{total_steps}]"
+                            )
+                            override_config = _build_override_config(
+                                days_back=days_back,
+                                value_column=column,
+                                horizon=horizon_steps,
+                                selected_models=selected_models,
+                                resample_freq=resample_freq,
+                                force_grid_search=force_grid_search,
+                            )
+                            result = forecast_item(
+                                item_id,
+                                override_config=override_config,
+                                retrain=retrain_before,
+                                include_backtest=False,
+                                include_history=True,
+                            )
+                            results[item_id][resample_label][column] = result
+                            missing_models.update(result.get("missing_models", []))
+                            progress.progress(step_idx / total_steps)
+
+                status.update(label="✓ Forecasts complete", state="complete")
 
             elapsed_time = time.time() - start_time
             st.success(f"Forecast generated in {elapsed_time:.2f} seconds.")
@@ -661,7 +690,8 @@ def render_forecast_tab() -> None:
                     "Forecasts may use zero-shot defaults."
                 )
             st.session_state["forecast_results"] = results
-            st.session_state["forecast_item_id"] = item_id
+            st.session_state["forecast_item_ids"] = item_ids
+            st.session_state["forecast_item_names"] = item_name_map
             st.session_state["forecast_missing_models"] = sorted(missing_models)
             st.session_state["actual_overrides"] = {}
 
@@ -670,11 +700,12 @@ def render_forecast_tab() -> None:
             st.exception(exc)
 
     stored_results = st.session_state.get("forecast_results")
-    stored_item_id = st.session_state.get("forecast_item_id")
+    stored_item_ids = st.session_state.get("forecast_item_ids", [])
+    stored_item_names = st.session_state.get("forecast_item_names", {})
     stored_missing = st.session_state.get("forecast_missing_models", [])
     stored_overrides = st.session_state.get("actual_overrides", {})
 
-    if stored_results and stored_item_id:
+    if stored_results and stored_item_ids:
         refresh_col_2 = st.columns([1, 3])[0]
         with refresh_col_2:
             refresh_actuals = st.button(
@@ -683,16 +714,18 @@ def render_forecast_tab() -> None:
             )
         if refresh_actuals:
             resample_choices = _normalize_resample_options(resample_labels)
-            overrides: Dict[str, Dict[str, Dict[str, Any]]] = {}
-            for resample_label, resample_freq in resample_choices:
-                overrides[resample_label] = {}
-                for column in selected_columns:
-                    overrides[resample_label][column] = _load_actual_context(
-                        stored_item_id,
-                        days_back=int(days_back),
-                        value_column=column,
-                        resample_freq=resample_freq,
-                    )
+            overrides: Dict[int, Dict[str, Dict[str, Any]]] = {}
+            for item_id in stored_item_ids:
+                overrides[item_id] = {}
+                for resample_label, resample_freq in resample_choices:
+                    overrides[item_id][resample_label] = {}
+                    for column in selected_columns:
+                        overrides[item_id][resample_label][column] = _load_actual_context(
+                            item_id,
+                            days_back=int(days_back),
+                            value_column=column,
+                            resample_freq=resample_freq,
+                        )
             st.session_state["actual_overrides"] = overrides
             stored_overrides = overrides
         if stored_missing:
@@ -701,84 +734,111 @@ def render_forecast_tab() -> None:
             )
 
         selected_resamples = [label for label, _ in _normalize_resample_options(resample_labels)]
-        resample_items = [
-            (label, stored_results[label])
-            for label in selected_resamples
-            if label in stored_results
-        ]
+        selected_item_ids = [int(item["item_id"]) for item in selected_items] if selected_items else stored_item_ids
 
-        if not resample_items:
-            st.info("No stored forecasts for the selected resampling options. Run forecast again.")
-            return
+        for item_id in selected_item_ids:
+            item_results = stored_results.get(item_id)
+            if not item_results:
+                continue
+            item_label = stored_item_names.get(item_id, str(item_id))
+            with st.expander(f"[{item_id}] {item_label}", expanded=False):
+                resample_items = [
+                    (label, item_results[label])
+                    for label in selected_resamples
+                    if label in item_results
+                ]
+                if not resample_items:
+                    st.info("No stored forecasts for the selected resampling options. Run forecast again.")
+                    continue
 
-        cols = st.columns(len(resample_items))
-        for col, (resample_label, resample_results) in zip(cols, resample_items):
-            with col:
-                st.subheader(f"Resample: {resample_label}")
-                for column, result in resample_results.items():
-                    if column not in selected_columns:
-                        continue
-                    st.markdown(f"#### {column}")
-                    context = result.get("context") or {}
-                    count = len(context.get("timestamps", []))
-                    st.caption(f"Loaded {count} data points for {column}.")
-                    override_ctx = stored_overrides.get(resample_label, {}).get(column)
-                    fig = _plot_history_and_forecast(
-                        result,
-                        title=f"{column} forecast (item {stored_item_id})",
-                        actual_points=int(actual_points),
-                        actual_override=override_ctx,
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
+                cols = st.columns(len(resample_items))
+                for col, (resample_label, resample_results) in zip(cols, resample_items):
+                    with col:
+                        st.subheader(f"Resample: {resample_label}")
+                        for column, result in resample_results.items():
+                            if column not in selected_columns:
+                                continue
+                            st.markdown(f"#### {column}")
+                            context = result.get("context") or {}
+                            count = len(context.get("timestamps", []))
+                            st.caption(f"Loaded {count} data points for {column}.")
+                            override_ctx = (
+                                stored_overrides.get(item_id, {})
+                                .get(resample_label, {})
+                                .get(column)
+                            )
+                            fig = _plot_history_and_forecast(
+                                result,
+                                title=f"{column} forecast (item {item_id})",
+                                actual_points=int(actual_points),
+                                actual_override=override_ctx,
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
 
-                buy_result = resample_results.get("buy_unit_price")
-                sell_result = resample_results.get("sell_unit_price")
-                if (
-                    buy_result
-                    and sell_result
-                    and buy_result.get("models")
-                    and sell_result.get("models")
-                    and "buy_unit_price" in selected_columns
-                    and "sell_unit_price" in selected_columns
-                ):
-                    model_names = [
-                        m.get("model_name")
-                        for m in buy_result.get("models", [])
-                        if m.get("model_name")
-                    ]
-                    st.subheader("Profitability indicator")
-                    ref_model = st.selectbox(
-                        "Reference model",
-                        options=model_names,
-                        index=0,
-                        key=f"profit_model_{resample_label}",
-                    )
-                    figs = _build_profitability_plots(
-                        buy_result,
-                        sell_result,
-                        ref_model,
-                        actual_points=int(actual_points),
-                        buy_override=stored_overrides.get(resample_label, {}).get("buy_unit_price"),
-                        sell_override=stored_overrides.get(resample_label, {}).get("sell_unit_price"),
-                    )
-                    if figs is not None:
-                        fig_summary = _build_profitability_summary(
-                            buy_result,
-                            sell_result,
-                            ref_model,
-                            actual_points=int(actual_points),
-                            buy_override=stored_overrides.get(resample_label, {}).get("buy_unit_price"),
-                            sell_override=stored_overrides.get(resample_label, {}).get("sell_unit_price"),
-                        )
-                        if fig_summary is not None:
-                            st.plotly_chart(fig_summary, use_container_width=True)
-                        fig_sell, fig_buy = figs
-                        st.plotly_chart(fig_sell, use_container_width=True)
-                        st.plotly_chart(fig_buy, use_container_width=True)
-                    else:
-                        st.info(
-                            "Profitability indicator requires matching buy/sell forecasts for the selected model."
-                        )
+                        buy_result = resample_results.get("buy_unit_price")
+                        sell_result = resample_results.get("sell_unit_price")
+                        if (
+                            buy_result
+                            and sell_result
+                            and buy_result.get("models")
+                            and sell_result.get("models")
+                            and "buy_unit_price" in selected_columns
+                            and "sell_unit_price" in selected_columns
+                        ):
+                            model_names = [
+                                m.get("model_name")
+                                for m in buy_result.get("models", [])
+                                if m.get("model_name")
+                            ]
+                            st.subheader("Profitability indicator")
+                            ref_model = st.selectbox(
+                                "Reference model",
+                                options=model_names,
+                                index=0,
+                                key=f"profit_model_{item_id}_{resample_label}",
+                            )
+                            figs = _build_profitability_plots(
+                                buy_result,
+                                sell_result,
+                                ref_model,
+                                actual_points=int(actual_points),
+                                buy_override=(
+                                    stored_overrides.get(item_id, {})
+                                    .get(resample_label, {})
+                                    .get("buy_unit_price")
+                                ),
+                                sell_override=(
+                                    stored_overrides.get(item_id, {})
+                                    .get(resample_label, {})
+                                    .get("sell_unit_price")
+                                ),
+                            )
+                            if figs is not None:
+                                fig_summary = _build_profitability_summary(
+                                    buy_result,
+                                    sell_result,
+                                    ref_model,
+                                    actual_points=int(actual_points),
+                                    buy_override=(
+                                        stored_overrides.get(item_id, {})
+                                        .get(resample_label, {})
+                                        .get("buy_unit_price")
+                                    ),
+                                    sell_override=(
+                                        stored_overrides.get(item_id, {})
+                                        .get(resample_label, {})
+                                        .get("sell_unit_price")
+                                    ),
+                                )
+                                if fig_summary is not None:
+                                    st.plotly_chart(fig_summary, use_container_width=True)
+                                fig_sell, fig_buy = figs
+                                st.plotly_chart(fig_sell, use_container_width=True)
+                                st.plotly_chart(fig_buy, use_container_width=True)
+                            else:
+                                st.info(
+                                    "Profitability indicator requires matching buy/sell forecasts for the selected model."
+                                )
 
 
 def main() -> None:
