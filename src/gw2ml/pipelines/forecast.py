@@ -183,10 +183,19 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
             logger.debug(f"    Running train/test evaluation (model NEVER sees test data during training)...")
             
             # For foundation models like Chronos, we don't need to retrain at each step of backtest
+            # For local models (ARIMA, ExpSmoothing), retrain is required but very slow
             retrain_at_step = True
+            is_local_model = model_name in ("ARIMA", "ExponentialSmoothing")
+
             if "Chronos" in model_name:
-                logger.info(f"    Disabling per-step retraining for foundation model {model_name}")
+                logger.debug(f"    Disabling per-step retraining for foundation model {model_name}")
                 retrain_at_step = False
+
+            # Use larger stride for local models to speed up backtest
+            # Local models require retrain=True which is slow, so we reduce iterations
+            backtest_stride = horizon * 4 if is_local_model else horizon
+            if is_local_model:
+                logger.debug(f"    Using larger stride ({backtest_stride}) for local model {model_name}")
 
             backtest_result = walk_forward_backtest(
                 model_class=model_obj.__class__,
@@ -195,7 +204,7 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
                 train_series=train_series,  # Train on this ONLY
                 test_series=test_series,  # Evaluate on this
                 forecast_horizon=horizon,
-                stride=1,
+                stride=backtest_stride,
                 verbose=False,
                 retrain=retrain_at_step,
             )

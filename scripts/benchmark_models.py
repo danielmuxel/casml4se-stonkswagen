@@ -206,16 +206,20 @@ def benchmark_model(
 
         # 3. Historical forecasts benchmark (backtest)
         # LocalForecastingModels (ARIMA, ExpSmoothing) require retrain=True
+        # which is MUCH slower - use larger stride to keep benchmark reasonable
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.synchronize()
 
+        # Local models: use larger stride (4x) since each step requires retraining
+        backtest_stride = forecast_horizon * 4 if is_local_model else forecast_horizon
+
         start = time.perf_counter()
         _ = model.historical_forecasts(
             series=series,
-            start=0.8,
+            start=0.9,  # Start later to reduce iterations
             forecast_horizon=forecast_horizon,
-            stride=forecast_horizon,  # Nicht jeder Schritt, sonst zu langsam
+            stride=backtest_stride,
             retrain=is_local_model,  # Local models need retrain=True
         )
         if torch.cuda.is_available():
