@@ -81,3 +81,5 @@ notebooks/**/data/*
 
 # Python packaging
 *.egg-info/
+images/screenshot-backtest-vergleich.png
+images/screenshot-forecast-vergleich.png
