@@ -38,7 +38,7 @@ def _resolve_test_item_id() -> int:
     env_value = os.getenv("TEST_ITEM_ID")
     if env_value and env_value.isdigit():
         return int(env_value)
-    return 19697  # Copper Ore
+    return 19976  # Mystic Coin
 
 
 def _create_mock_series(days: int = 30) -> TimeSeries:
@@ -306,7 +306,7 @@ class TestLoadGW2SeriesBatch:
     def test_load_batch(self) -> None:
         """Test loading multiple items."""
         # Common tradeable items
-        item_ids = [19697, 19699, 19700]  # Copper, Iron, Mithril ore
+        item_ids = [19976, 19699, 19700]  # Mystic Coin, Iron Ore, Mithril Ore
         days_back = int(os.getenv("TEST_DAYS_BACK", "7"))
 
         batch = load_gw2_series_batch(item_ids, days_back=days_back)
@@ -321,7 +321,7 @@ class TestLoadGW2SeriesBatch:
 
     def test_load_batch_uses_cache(self) -> None:
         """Test that batch loading populates cache."""
-        item_ids = [19697, 19699]
+        item_ids = [19976, 19699]
         days_back = int(os.getenv("TEST_DAYS_BACK", "7"))
 
         load_gw2_series_batch(item_ids, days_back=days_back)
@@ -431,4 +431,3 @@ class TestCache:
         info = get_cache_info()
         assert info["entries"] == 1
         assert info["item_ids"] == 1
-

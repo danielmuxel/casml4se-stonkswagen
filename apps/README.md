@@ -10,7 +10,8 @@ apps/
 │   └── main.py              # FastAPI Backend (REST-API)
 └── streamlit/
     ├── gw2_app.py           # Haupt-Einstiegspunkt
-    ├── forecast_app.py      # Training & Forecasting Tab
+    ├── forecast_app.py      # Forecasting (ohne Training/Backtest)
+    ├── evaluation_app.py    # Training & Backtests
     └── item_analysis_app.py # Item-Analyse Tab
 ```
 

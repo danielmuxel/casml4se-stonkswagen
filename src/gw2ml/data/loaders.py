@@ -64,7 +64,7 @@ class GW2Series:
         num_points: Number of data points
 
     Example:
-        >>> data = load_gw2_series(19697, days_back=30)
+        >>> data = load_gw2_series(19976, days_back=30)
         >>> print(data.info())
         >>> train, test = data.split(train=0.8)
         >>> train, val, test = data.split(train=0.7, val=0.15)
@@ -312,14 +312,16 @@ def load_gw2_series(
     use_cache: bool = True,
     fill_missing_dates: bool = True,
     resample_freq: Optional[str] = None,
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
 ) -> GW2Series:
     """
     Load GW2 price data for a single item.
 
     Args:
-        item_id: GW2 Item ID (e.g., 19697 for Copper Ore)
-        days_back: Number of days to load
-        value_column: "buy_unit_price" or "sell_unit_price"
+        item_id: GW2 Item ID (e.g., 19976 for Mystic Coin)
+        days_back: Number of days to load (ignored if start_time/end_time provided)
+        value_column: e.g. "buy_unit_price", "sell_unit_price", "buy_quantity", "sell_quantity", "demand"
         use_cache: Whether to use cached data (default: True)
         fill_missing_dates: Whether to interpolate missing dates (default: True)
         resample_freq: Resample frequency for downsampling (e.g., '1H', '6H', '1D')
@@ -327,6 +329,8 @@ def load_gw2_series(
                        - '6H': 6-hourly (reduces points by 6x)
                        - '1D': daily (reduces points by 24x if hourly data)
                        - None: no resampling (default)
+        start_time: Optional start timestamp (UTC). If provided, overrides days_back.
+        end_time: Optional end timestamp (UTC). If provided, overrides days_back.
 
     Returns:
         GW2Series with TimeSeries and metadata
@@ -336,13 +340,21 @@ def load_gw2_series(
 
     Example:
         >>> # Load with daily aggregation (faster training)
-        >>> data = load_gw2_series(19697, days_back=30, resample_freq='1D')
+        >>> data = load_gw2_series(19976, days_back=30, resample_freq='1D')
         >>> print(data.info())
         >>> train, test = data.split(train=0.8)
     """
     # NOTE: fill_missing_dates and resample_freq materially change the resulting TimeSeries index,
     # so they must be part of the cache key.
-    cache_key = (item_id, days_back, value_column, fill_missing_dates, resample_freq)
+    cache_key = (
+        item_id,
+        days_back,
+        value_column,
+        fill_missing_dates,
+        resample_freq,
+        start_time.isoformat() if start_time else None,
+        end_time.isoformat() if end_time else None,
+    )
 
     # Check cache
     if use_cache and cache_key in _cache:
@@ -351,12 +363,23 @@ def load_gw2_series(
     # Load from database
     client = _get_db_client()
 
-    df = get_prices(client, item_id, last_days=days_back, order="ASC")
+    if start_time or end_time:
+        df = get_prices(client, item_id, start_time=start_time, end_time=end_time, order="ASC")
+    else:
+        df = get_prices(client, item_id, last_days=days_back, order="ASC")
 
     if df.empty:
+        if start_time or end_time:
+            raise ValueError(
+                f"No data found for item_id={item_id} in the requested time range"
+            )
         raise ValueError(
             f"No data found for item_id={item_id} in the last {days_back} days"
         )
+
+    if value_column == "demand":
+        df = df.copy()
+        df["demand"] = df["buy_quantity"] - df["sell_quantity"]
 
     # Convert to TimeSeries
     series = _df_to_series(df, value_col=value_column, fill_missing_dates=fill_missing_dates)
@@ -364,7 +387,7 @@ def load_gw2_series(
     # Resample if requested (for faster training with large datasets)
     if resample_freq is not None:
         # Convert to pandas DataFrame, resample, then back to TimeSeries
-        df_series = series.pd_dataframe()
+        df_series = series.to_dataframe()
         df_resampled = df_series.resample(resample_freq).mean()  # Average values in each bucket
         series = TimeSeries.from_dataframe(df_resampled)
 
@@ -425,7 +448,7 @@ def load_gw2_series_batch(
         Dict mapping item_id to GW2Series
 
     Example:
-        >>> items = [19697, 19699, 19700]  # Copper, Iron, Mithril
+        >>> items = [19976, 19699, 19700]  # Mystic Coin, Iron Ore, Mithril Ore
         >>> batch = load_gw2_series_batch(items, days_back=30)
         >>>
         >>> for item_id, data in batch.items():
@@ -478,8 +501,8 @@ def load_and_split(
         (train, val, test) if val is specified
 
     Example:
-        >>> train, test = load_and_split(19697, train=0.8)
-        >>> train, val, test = load_and_split(19697, train=0.7, val=0.15)
+        >>> train, test = load_and_split(19976, train=0.8)
+        >>> train, val, test = load_and_split(19976, train=0.7, val=0.15)
     """
     data = load_gw2_series(item_id, days_back, value_column, fill_missing_dates=fill_missing_dates)
     return data.split(train=train, val=val)
@@ -509,9 +532,9 @@ def load_and_split_days(
         (train, val, test) if val_days is specified
 
     Example:
-        >>> train, test = load_and_split_days(19697, days_back=30, test_days=7)
+        >>> train, test = load_and_split_days(19976, days_back=30, test_days=7)
         >>> train, val, test = load_and_split_days(
-        ...     19697, days_back=30, test_days=7, val_days=3
+        ...     19976, days_back=30, test_days=7, val_days=3
         ... )
     """
     data = load_gw2_series(item_id, days_back, value_column, fill_missing_dates=fill_missing_dates)
@@ -555,4 +578,3 @@ __all__ = [
     "clear_cache",
     "get_cache_info",
 ]
-

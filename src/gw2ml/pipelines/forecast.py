@@ -68,21 +68,28 @@ def _load_all_artifacts(
     return entries
 
 
-def forecast_item(item_id: int, override_config: Config | None = None, retrain: bool = False) -> Dict[str, Any]:
+def forecast_item(
+    item_id: int,
+    override_config: Config | None = None,
+    retrain: bool = False,
+    include_backtest: bool = True,
+    include_history: bool = True,
+) -> Dict[str, Any]:
     """
     Load the latest trained model for an item and produce:
     - future forecast for the next horizon steps
-    - a short backtest (historical forecasts) for quick performance view
+    - optional backtest (historical forecasts) for quick performance view
     """
     logger.info(f"Forecasting for item {item_id} (retrain={retrain})")
     config = merge_config(DEFAULT_CONFIG, override_config)
     horizon = int(config["forecast"]["horizon"])
     backtest_split = float(config["forecast"].get("backtest_split", 0.8))  # Default to 80/20 split
     primary_metric = config.get("metric", {}).get("primary", "mape")
-    metric_fn = get_metric(primary_metric)
+    metric_fn = get_metric(primary_metric) if include_backtest else None
 
     logger.info(f"  Forecast horizon: {horizon} steps")
-    logger.info(f"  Backtest split: {backtest_split:.0%} train / {(1-backtest_split):.0%} test")
+    if include_backtest:
+        logger.info(f"  Backtest split: {backtest_split:.0%} train / {(1-backtest_split):.0%} test")
 
     # Optional retrain before forecasting (full hyperparameter search + artifacts update)
     if retrain:
@@ -91,12 +98,22 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
 
         train_items([item_id], override_config=override_config)
 
+    data_cfg = config.get("data", {})
+    start_time = data_cfg.get("start_time")
+    end_time = data_cfg.get("end_time")
+    if isinstance(start_time, str):
+        start_time = pd.to_datetime(start_time)
+    if isinstance(end_time, str):
+        end_time = pd.to_datetime(end_time)
+
     series_meta = load_gw2_series(
         item_id=item_id,
-        days_back=config["data"]["days_back"],
-        value_column=config["data"]["value_column"],
-        fill_missing_dates=config["data"]["fill_missing_dates"],
-        resample_freq=config["data"].get("resample_freq"),
+        days_back=data_cfg["days_back"],
+        value_column=data_cfg["value_column"],
+        fill_missing_dates=data_cfg["fill_missing_dates"],
+        resample_freq=data_cfg.get("resample_freq"),
+        start_time=start_time,
+        end_time=end_time,
     )
     logger.info(f"  Loaded {series_meta.num_points} data points")
 
@@ -131,17 +148,6 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
         if missing_models:
             logger.warning(f"  Missing artifacts for: {missing_models}")
 
-    # If retrain was requested, do full grid search.
-    # If artifacts are missing and retrain is False, we use zero-shot fallback.
-    logger.info("  Triggering retraining...")
-    if retrain:
-        from gw2ml.pipelines.train import train_items
-        train_items([item_id], override_config=override_config)
-        loaded = _load_all_artifacts(item_id, config, allowed_models=requested_models or None)
-        if requested_models:
-            found_names = {name for name, _, _ in loaded}
-            missing_models = [m for m in requested_models if m not in found_names]
-
     if missing_models:
         from gw2ml.modeling.registry import get_model
         for model_name in missing_models[:]:  # iterate over copy
@@ -168,58 +174,77 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
         logger.error(f"  ✗ {error_msg}")
         raise FileNotFoundError(error_msg)
 
+    context_payload: Dict[str, Any] | None = None
+    if include_history:
+        df_context = _to_df(series_meta.series)
+        df_context.index = pd.to_datetime(df_context.index).tz_localize(None)
+        context_payload = {
+            "timestamps": df_context.index.astype(str).tolist(),
+            "values": df_context.iloc[:, 0].tolist(),
+        }
+
     for idx, (model_name, model_obj, metadata) in enumerate(loaded, 1):
         logger.info(f"  [{idx}/{len(loaded)}] Processing {model_name}...")
 
-        # STEP 1: Split data into train/test for proper evaluation
-        split_idx = int(len(series_meta.series) * backtest_split)
-        train_series = series_meta.series[:split_idx]
-        test_series = series_meta.series[split_idx:]
+        hist_forecast = None
+        actual_series = None
+        hist_metric = None
+        df_hist_fc = pd.DataFrame()
+        df_actual = pd.DataFrame()
+        if include_backtest:
+            # STEP 1: Split data into train/test for proper evaluation
+            split_idx = int(len(series_meta.series) * backtest_split)
+            train_series = series_meta.series[:split_idx]
+            test_series = series_meta.series[split_idx:]
 
-        logger.debug(f"    Data split: train={len(train_series)}, test={len(test_series)}")
+            logger.debug(f"    Data split: train={len(train_series)}, test={len(test_series)}")
 
-        # STEP 2: Evaluate on test data (model trained ONLY on train data)
-        try:
-            logger.debug(f"    Running train/test evaluation (model NEVER sees test data during training)...")
-            
-            # For foundation models like Chronos, we don't need to retrain at each step of backtest
-            # For local models (ARIMA, ExpSmoothing), retrain is required but very slow
-            retrain_at_step = True
-            is_local_model = model_name in ("ARIMA", "ExponentialSmoothing")
+            # STEP 2: Evaluate on test data (model trained ONLY on train data)
+            try:
+                logger.debug(f"    Running train/test evaluation (model NEVER sees test data during training)...")
 
-            if "Chronos" in model_name:
-                logger.debug(f"    Disabling per-step retraining for foundation model {model_name}")
-                retrain_at_step = False
+                # For foundation models like Chronos, we don't need to retrain at each step of backtest
+                # For local models (ARIMA, ExpSmoothing), retrain is required but very slow
+                retrain_at_step = True
+                is_local_model = model_name in ("ARIMA", "ExponentialSmoothing")
 
-            # Use larger stride for local models to speed up backtest
-            # Local models require retrain=True which is slow, so we reduce iterations
-            backtest_stride = horizon * 4 if is_local_model else horizon
-            if is_local_model:
-                logger.debug(f"    Using larger stride ({backtest_stride}) for local model {model_name}")
+                if "Chronos" in model_name:
+                    logger.debug(f"    Disabling per-step retraining for foundation model {model_name}")
+                    retrain_at_step = False
 
-            backtest_result = walk_forward_backtest(
-                model_class=model_obj.__class__,
-                model_params=metadata.get("params", {}),
-                series=series_meta.series,  # Full series for context
-                train_series=train_series,  # Train on this ONLY
-                test_series=test_series,  # Evaluate on this
-                forecast_horizon=horizon,
-                stride=backtest_stride,
-                verbose=False,
-                retrain=retrain_at_step,
-            )
-            hist_forecast = backtest_result.forecasts
-            actual_series = backtest_result.actuals
-            hist_metric = float(metric_fn(actual_series, hist_forecast)) if len(hist_forecast) > 0 else float("nan")
-            logger.info(f"    {model_name} test set {primary_metric}: {hist_metric:.4f} (train={backtest_result.train_size}, test={backtest_result.test_size})")
-        except Exception as exc:
-            exc_msg = str(exc)
-            if "MPS" in exc_msg or "mps" in exc_msg or "float32" in exc_msg or "dtype" in exc_msg:
-                logger.error(f"    ✗ {model_name} evaluation failed: Hardware incompatibility (MPS/GPU issue)")
-            else:
-                logger.error(f"    ✗ {model_name} evaluation failed: {exc}")
-            logger.warning(f"    Skipping {model_name} entirely")
-            continue
+                # Use larger stride for local models to speed up backtest
+                # Local models require retrain=True which is slow, so we reduce iterations
+                backtest_stride = horizon * 4 if is_local_model else horizon
+                if is_local_model:
+                    logger.debug(f"    Using larger stride ({backtest_stride}) for local model {model_name}")
+
+                backtest_result = walk_forward_backtest(
+                    model_class=model_obj.__class__,
+                    model_params=metadata.get("params", {}),
+                    series=series_meta.series,  # Full series for context
+                    train_series=train_series,  # Train on this ONLY
+                    test_series=test_series,  # Evaluate on this
+                    forecast_horizon=horizon,
+                    stride=backtest_stride,
+                    verbose=False,
+                    retrain=retrain_at_step,
+                )
+                hist_forecast = backtest_result.forecasts
+                actual_series = backtest_result.actuals
+                if metric_fn is not None:
+                    hist_metric = float(metric_fn(actual_series, hist_forecast)) if len(hist_forecast) > 0 else float("nan")
+                logger.info(
+                    f"    {model_name} test set {primary_metric}: {hist_metric:.4f} "
+                    f"(train={backtest_result.train_size}, test={backtest_result.test_size})"
+                )
+            except Exception as exc:
+                exc_msg = str(exc)
+                if "MPS" in exc_msg or "mps" in exc_msg or "float32" in exc_msg or "dtype" in exc_msg:
+                    logger.error(f"    ✗ {model_name} evaluation failed: Hardware incompatibility (MPS/GPU issue)")
+                else:
+                    logger.error(f"    ✗ {model_name} evaluation failed: {exc}")
+                logger.warning(f"    Skipping {model_name} entirely")
+                continue
 
         # STEP 3: Retrain on ALL data for production forecast
         try:
@@ -244,17 +269,13 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
         df_future = df_future[df_future.index > last_ts_naive]
 
         # Handle backtest results (may be None if backtest failed)
-        if hist_forecast is not None and actual_series is not None:
+        if include_backtest and hist_forecast is not None and actual_series is not None:
             df_hist_fc = _to_df(hist_forecast)
             df_hist_fc.index = pd.to_datetime(df_hist_fc.index).tz_localize(None)
             df_actual = _to_df(actual_series)
             df_actual.index = pd.to_datetime(df_actual.index).tz_localize(None)
             # Note: No reindexing needed - slice_intersect already aligned them
             # Reindexing can introduce forward-fill artifacts that look like data leakage
-        else:
-            # Backtest failed, create empty dataframes
-            df_hist_fc = pd.DataFrame()
-            df_actual = pd.DataFrame()
 
         models_payload.append(
             {
@@ -283,10 +304,11 @@ def forecast_item(item_id: int, override_config: Config | None = None, retrain: 
         "item_id": item_id,
         "primary_metric": primary_metric,
         "forecast_horizon": horizon,
+        "value_column": data_cfg.get("value_column"),
+        "context": context_payload,
         "models": models_payload,
         "missing_models": missing_models,
     }
 
 
 __all__ = ["forecast_item"]
-

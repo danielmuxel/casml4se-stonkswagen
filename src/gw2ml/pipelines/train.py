@@ -66,6 +66,20 @@ def _save_artifact(model: Any, metadata: Dict[str, Any], target_dir: Path) -> No
     metadata_path.write_text(json.dumps(metadata, indent=2))
 
 
+def _load_cached_params(artifacts_root: Path, item_id: int, model_name: str) -> Dict[str, Any] | None:
+    metadata_path = artifacts_root / str(item_id) / model_name / "best_metadata.json"
+    if not metadata_path.exists():
+        return None
+    try:
+        metadata = json.loads(metadata_path.read_text())
+    except Exception:
+        return None
+    params = metadata.get("params")
+    if isinstance(params, dict):
+        return params
+    return None
+
+
 def _maybe_upload_s3(config: Config, item_dir: Path) -> None:
     if not config["paths"].get("use_s3"):
         return
@@ -104,6 +118,9 @@ def train_items(item_ids: List[int], override_config: Config | None = None) -> L
 
     logger.info(f"Starting training for {len(item_ids)} item(s): {item_ids}")
     logger.info(f"Models to train: {[m['name'] for m in config['models']]}")
+    train_cfg = config.get("train", {})
+    reuse_best_params = bool(train_cfg.get("reuse_best_params", True))
+    force_grid_search = bool(train_cfg.get("force_grid_search", False))
 
     results: List[Dict[str, Any]] = []
 
@@ -134,6 +151,13 @@ def train_items(item_ids: List[int], override_config: Config | None = None) -> L
             try:
                 model_cls = get_model(model_name)
                 grid = model_spec.get("grid") or get_default_grid(model_name)
+
+                cached_params = None
+                if reuse_best_params and not force_grid_search:
+                    cached_params = _load_cached_params(artifacts_root, item_id, model_name)
+                    if cached_params is not None:
+                        logger.info("    Using cached best params (skipping grid search)")
+                        grid = {key: [value] for key, value in cached_params.items()}
 
                 grid_size = sum(1 for _ in _iter_param_grid(grid))
                 logger.info(f"    Grid search: {grid_size} parameter combination(s)")
@@ -294,4 +318,3 @@ def train_items(item_ids: List[int], override_config: Config | None = None) -> L
 
 
 __all__ = ["train_items"]
-
