@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from gw2ml.data.loaders import load_gw2_series
 
-series_meta = load_gw2_series(19697, days_back=30, value_column="sell_unit_price", fill_missing_dates=True)
+series_meta = load_gw2_series(19976, days_back=30, value_column="sell_unit_price", fill_missing_dates=True)
 print(f"Points: {series_meta.num_points}")
 
 df = series_meta.series.pd_dataframe()

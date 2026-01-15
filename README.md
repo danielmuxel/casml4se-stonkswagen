@@ -31,22 +31,163 @@ Workspace for exploring Guild Wars 2 trading data, training machine-learning mod
 
 4. **Frontend starten** (in einem ANDEREN Terminal):
    ```bash
-   uv run streamlit run apps/streamlit/forecast_app.py
+   uv run streamlit run apps/streamlit/gw2_app.py
    ```
 
 > **Wichtig:** Backend und Frontend sind zwei separate Prozesse und müssen in verschiedenen Terminals gestartet werden. Das Backend läuft auf Port 8000, das Streamlit-Frontend öffnet automatisch einen Browser.
 
 ## Folder Structure
 
-- `apps/` – Nuxt applications that will present dashboards and tools backed by the ML workflows.
+- `apps/` – Streamlit/FastAPI applications for dashboards and ML workflows.
 - `data/` – Raw and intermediate datasets. Keep large or sensitive files out of version control.
 - `docs/` – Reference material, onboarding guides, and database schema notes.
 - `infra/` – Deployment scripts, infrastructure-as-code, and platform configuration.
-- `models/` – Stored model artifacts, evaluation summaries, and metadata for best-performing runs.
+- `models/` – Stored model artifacts, evaluation summaries, and benchmark results.
 - `notebooks/` – Exploratory Jupyter notebooks and prototype analyses.
-- `scripts/` – Automation helpers such as `init_ml_project.sh` for bootstrapping environments.
+- `scripts/` – Automation helpers for benchmarking, data export, and system checks.
 - `src/` – Python packages (e.g., `gw2ml`) that power data access, feature prep, and modeling.
 - `tests/` – Pytest-based integration suites that exercise data exports and pipelines.
+
+## Scripts
+
+Alle Scripts befinden sich im `scripts/` Ordner und werden mit `uv run python scripts/<name>.py` ausgeführt.
+
+| Script | Beschreibung | Kategorie |
+|--------|--------------|-----------|
+| [`benchmark_models.py`](#benchmark_modelspy---modell-performance-vergleich) | Benchmarkt alle Forecasting-Modelle | ML/Performance |
+| [`check_pytorch.py`](#check_pytorchpy---pytorch-system-check) | Zeigt PyTorch-Version und Hardware | System |
+| [`show_devices.py`](#show_devicespy---pytorch-devices-auflisten) | Listet verfügbare PyTorch-Devices | System |
+| [`fetch_all_prices.py`](#fetch_all_pricespy---preisdaten-exportieren) | Exportiert Preisdaten als CSV | Daten |
+| [`compute_price_correlations.py`](#compute_price_correlationspy---preis-korrelationen-berechnen) | Berechnet Item-Korrelationen | Analyse |
+| [`upload_data_to_s3.py`](#upload_data_to_s3py---daten-zu-s3-hochladen) | Lädt Daten zu S3 hoch | Daten |
+| [`run_ml_tests.py`](#run_ml_testspy---ml-tests-ausführen) | Führt ML-Testfälle aus | Testing |
+
+---
+
+### `benchmark_models.py` - Modell-Performance-Vergleich
+
+Benchmarkt alle Forecasting-Modelle (ARIMA, ExponentialSmoothing, XGBoost, Chronos2) und erstellt einen Performance-Report.
+
+```bash
+# Standard-Benchmark (speichert nach models/benchmark.json)
+uv run python scripts/benchmark_models.py
+
+# Mit echten Daten (Mystic Coin)
+uv run python scripts/benchmark_models.py --item-id 19976 --days 30
+
+# Eigener Output-Pfad
+uv run python scripts/benchmark_models.py --output results/benchmark.json
+
+# Ohne Speichern (nur Ausgabe)
+uv run python scripts/benchmark_models.py --no-save
+```
+
+**Output:** Tabelle mit Fit/Predict/Backtest-Zeiten und relativer Performance (schnellstes Modell = 1.0x).
+
+[↑ Zurück zur Übersicht](#scripts)
+
+---
+
+### `check_pytorch.py` - PyTorch System-Check
+
+Zeigt PyTorch-Version, verfügbare Hardware-Beschleuniger und Systemressourcen.
+
+```bash
+uv run python scripts/check_pytorch.py
+```
+
+**Unterstützt:** macOS (Apple Silicon & Intel), Linux/Windows (NVIDIA CUDA), AMD ROCm.
+
+[↑ Zurück zur Übersicht](#scripts)
+
+---
+
+### `show_devices.py` - PyTorch Devices auflisten
+
+Listet alle verfügbaren PyTorch-Devices (CPU, CUDA, MPS, ROCm).
+
+```bash
+uv run python scripts/show_devices.py
+```
+
+[↑ Zurück zur Übersicht](#scripts)
+
+---
+
+### `fetch_all_prices.py` - Preisdaten exportieren
+
+Exportiert alle GW2-Preisdaten aus der Datenbank als CSV-Dateien.
+
+```bash
+# Alle Daten exportieren
+uv run python scripts/fetch_all_prices.py
+
+# Nur handelbare Items
+uv run python scripts/fetch_all_prices.py --tradable-only
+
+# Mit Datumsfilter
+uv run python scripts/fetch_all_prices.py --start-date 2024-01-01
+
+# Mit mehr Parallel-Workern
+uv run python scripts/fetch_all_prices.py --workers 12
+
+# Liste handelbarer Items exportieren
+uv run python scripts/fetch_all_prices.py --export-tradable-items
+```
+
+**Output:** CSV-Dateien in `data/gw2/snapshots/<timestamp>/`.
+
+[↑ Zurück zur Übersicht](#scripts)
+
+---
+
+### `compute_price_correlations.py` - Preis-Korrelationen berechnen
+
+Berechnet Item-zu-Item-Korrelationen und Cluster aus gecachten Preis-Snapshots.
+
+```bash
+uv run python scripts/compute_price_correlations.py
+```
+
+**Modi:**
+- Atemporal (distributional features): Korrelationen basierend auf Preisverteilungen
+- Temporal (time-aligned): Korrelationen basierend auf zeitlich ausgerichteten Preisverläufen
+
+[↑ Zurück zur Übersicht](#scripts)
+
+---
+
+### `upload_data_to_s3.py` - Daten zu S3 hochladen
+
+Lädt Daten zu Hetzner Object Storage (S3-kompatibel) hoch.
+
+```bash
+uv run python scripts/upload_data_to_s3.py gw2/raw \
+  --bucket ost-s3 \
+  --workers 8 \
+  --filter-ext .csv,.parquet
+```
+
+[↑ Zurück zur Übersicht](#scripts)
+
+---
+
+### `run_ml_tests.py` - ML-Tests ausführen
+
+Führt registrierte ML-Testfälle durch pytest aus.
+
+```bash
+# Alle Tests
+uv run python scripts/run_ml_tests.py
+
+# Spezifische Tests
+uv run python scripts/run_ml_tests.py --cases database_export
+ML_TEST_CASES=database_export uv run python scripts/run_ml_tests.py
+```
+
+[↑ Zurück zur Übersicht](#scripts)
+
+---
 
 ## Working with `uv`
 
@@ -116,32 +257,6 @@ uv run pytest tests
 
 Some integration tests hit live databases; ensure `DB_URL` (or equivalent env credentials) is configured before running.
 
-## Daten aus der Datenbank exportieren
-
-Mit `scripts/fetch_all_prices.py` kannst du alle Preisdaten aus der Datenbank als CSV-Dateien herunterladen. Das Script erstellt automatisch einen Snapshot-Ordner mit Zeitstempel:
-
-```bash
-# Einfacher Export aller Daten (bis jetzt):
-uv run python scripts/fetch_all_prices.py
-# Standard: 10 Workers, alle Items (nicht nur handelbare),
-# Zeitraum: unbegrenzt bis jetzt, Batch-Size: 200, Delay: 0.1s,
-# nutzt Cache (lädt nicht neu, wenn Snapshot bereits existiert)
-
-# Nur handelbare Items exportieren:
-uv run python scripts/fetch_all_prices.py --tradable-only
-
-# Mit Datumsfilter (z.B. ab 2024-01-01):
-uv run python scripts/fetch_all_prices.py --start-date 2024-01-01
-
-# Mit mehr Parallel-Workern für schnelleren Export:
-uv run python scripts/fetch_all_prices.py --workers 12
-
-# Liste aller handelbaren Items exportieren:
-uv run python scripts/fetch_all_prices.py --export-tradable-items
-```
-
-Die CSV-Dateien werden in einem Ordner mit Zeitstempel unter `data/gw2/snapshots/` gespeichert. Jedes Item bekommt eine eigene CSV-Datei.
-
 ## Training/Forecast Entry Points
 
 Run inside the repo root (uses `uv`):
@@ -165,18 +280,4 @@ These entry points wrap the existing `train_items` and `forecast_item` functions
   ./initialize_all.sh
   ```
 
-## Uploading data to S3
-
-Use `scripts/upload_data_to_s3.py` to send any folder under `DATA_PATH` (configurable via `.env`) to Hetzner object storage.
-
-```bash
-uv run python scripts/upload_data_to_s3.py gw2/raw \
-  --bucket ost-s3 \
-  --workers 8 \
-  --filter-ext .csv,.parquet
-```
-
-- `folder` accepts absolute paths or paths relative to `DATA_PATH` (which defaults to `data/` at the repo root).
-- The script automatically loads `.env`, resolves relative paths against the project root, and preserves subfolder structure in S3.
-- Customize the destination with `--prefix` or `--timestamp`, preview uploads with `--dry-run`, and increase throughput via `--workers`.
 

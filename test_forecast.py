@@ -5,7 +5,7 @@ from gw2ml.pipelines.forecast import forecast_item
 
 # Test forecasting with all trained models
 result = forecast_item(
-    item_id=19697,
+    item_id=19976,
     override_config={
         "data": {"days_back": 30, "value_column": "sell_unit_price"},
         "forecast": {"horizon": 12},

@@ -71,7 +71,7 @@ def render_item_analysis_tab() -> None:
 
     # Find the default item object for the multi-select
 
-    default_ids = {"19698", "19699", "19697"}
+    default_ids = {}
     default_items = [
         item for item in items
         if str(item.get("item_id")) in default_ids

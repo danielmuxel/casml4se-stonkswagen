@@ -15,6 +15,8 @@ DEFAULT_CONFIG: Config = {
         "fill_missing_dates": True,
         "min_points": 50,
         "resample_freq": None,  # For faster training, use '6H' (6-hourly) or '1D' (daily)
+        "start_time": None,
+        "end_time": None,
     },
     "split": {
         "train": 0.7,
@@ -31,6 +33,10 @@ DEFAULT_CONFIG: Config = {
         "use_s3": False,
         "s3_prefix": None,
         "bucket_name": "ost-s3",
+    },
+    "train": {
+        "reuse_best_params": True,
+        "force_grid_search": False,
     },
     "metric": {"primary": "mape", "metrics": ["mape"]},
     "models": [
@@ -65,4 +71,3 @@ def merge_config(base: Config, override: Config | None = None) -> Config:
 
 
 __all__ = ["DEFAULT_CONFIG", "get_artifacts_dir", "merge_config", "Config"]
-

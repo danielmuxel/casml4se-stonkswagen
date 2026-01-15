@@ -48,7 +48,7 @@ def _resolve_test_item_id() -> int:
     env_value = os.getenv("TEST_ITEM_ID")
     if env_value and env_value.isdigit():
         return int(env_value)
-    return 19697  # Copper Ore
+    return 19976  # Mystic Coin
 
 
 # ══════════════════════════════════════════════════════════════════════════════

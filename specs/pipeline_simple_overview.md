@@ -68,7 +68,7 @@ from gw2ml.data.database_queries import get_prices
 
 df = get_prices(
     connection,
-    item_id=19697,
+    item_id=19976,
     last_days=30
 )
 
@@ -77,7 +77,7 @@ from gw2ml.data.retriever import DataRetriever
 
 retriever = DataRetriever()
 df = retriever.get_data(
-    symbol="19697",
+    symbol="19976",
     source="DAMU",
     start_time=...,
     end_time=...
@@ -261,7 +261,7 @@ def load_gw2_series(
     Lädt GW2 Daten und gibt direkt eine TimeSeries zurück.
     
     Example:
-        series = load_gw2_series(19697, days_back=30)
+        series = load_gw2_series(19976, days_back=30)
         train, test = series.split_after(0.8)
     """
     df = get_gw2_prices(item_id, days_back, value_column)
@@ -341,7 +341,7 @@ from gw2ml.modeling import ARIMAModel
 from gw2ml.pipeline import StandardPipeline
 
 # Daten laden (1 Zeile!)
-series = load_gw2_series(item_id=19697, days_back=30)
+series = load_gw2_series(item_id=19976, days_back=30)
 
 # Pipeline erstellen
 model = ARIMAModel(p=2, d=1, q=2)
