@@ -5,7 +5,7 @@ import pandas as pd
 from gw2ml.data.loaders import load_gw2_series
 
 series_meta = load_gw2_series(
-    item_id=19697,
+    item_id=19976,
     days_back=30,
     value_column="sell_unit_price",
     fill_missing_dates=True,

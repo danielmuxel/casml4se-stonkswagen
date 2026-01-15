@@ -22,7 +22,7 @@ config = {
 print("\nTraining with config:")
 print(config)
 
-results = train_items([19697], override_config=config)
+results = train_items([19976], override_config=config)
 
 print("\nTraining results:")
 for result in results:

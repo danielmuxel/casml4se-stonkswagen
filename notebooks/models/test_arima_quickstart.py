@@ -28,7 +28,7 @@ def main():
     # 1. KONFIGURATION
     # ══════════════════════════════════════════════════════════════════════════
     
-    item_id = int(os.getenv("TEST_ITEM_ID", "19697"))  # Default: Copper Ore
+    item_id = int(os.getenv("TEST_ITEM_ID", "19976"))  # Default: Mystic Coin
     days_back = int(os.getenv("DAYS_BACK", "14"))       # 14 Tage Daten
     train_ratio = 0.8                                    # 80% Training, 20% Test
     
