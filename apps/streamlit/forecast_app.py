@@ -294,6 +294,22 @@ def _build_profitability_plots(
     combined["breakeven_sell"] = combined["buy"] / 0.85
     combined["max_buy"] = combined["sell"] * 0.85
 
+    y_series = pd.concat(
+        [
+            combined["buy"],
+            combined["sell"],
+            combined["breakeven_sell"],
+            combined["max_buy"],
+        ],
+        axis=0,
+    ).dropna()
+    y_range = None
+    if not y_series.empty:
+        y_min = float(y_series.min())
+        y_max = float(y_series.max())
+        pad = (y_max - y_min) * 0.05 if y_max != y_min else max(1.0, y_max * 0.01)
+        y_range = [y_min - pad, y_max + pad]
+
     sell_profit = combined["sell"].where(combined["sell"] >= combined["breakeven_sell"])
     sell_loss = combined["sell"].where(combined["sell"] < combined["breakeven_sell"])
 
@@ -359,6 +375,8 @@ def _build_profitability_plots(
         legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5),
         margin=dict(b=120),
     )
+    if y_range:
+        fig_sell.update_yaxes(range=y_range)
 
     fig_buy = go.Figure()
     fig_buy.add_trace(
@@ -419,6 +437,8 @@ def _build_profitability_plots(
         legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5),
         margin=dict(b=120),
     )
+    if y_range:
+        fig_buy.update_yaxes(range=y_range)
     return fig_sell, fig_buy
 
 
@@ -475,6 +495,22 @@ def _build_profitability_summary(
     combined["breakeven_sell"] = combined["buy"] / 0.85
     combined["max_buy"] = combined["sell"] * 0.85
 
+    y_series = pd.concat(
+        [
+            combined["buy"],
+            combined["sell"],
+            combined["breakeven_sell"],
+            combined["max_buy"],
+        ],
+        axis=0,
+    ).dropna()
+    y_range = None
+    if not y_series.empty:
+        y_min = float(y_series.min())
+        y_max = float(y_series.max())
+        pad = (y_max - y_min) * 0.05 if y_max != y_min else max(1.0, y_max * 0.01)
+        y_range = [y_min - pad, y_max + pad]
+
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
@@ -520,6 +556,8 @@ def _build_profitability_summary(
         legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5),
         margin=dict(b=120),
     )
+    if y_range:
+        fig.update_yaxes(range=y_range)
     return fig
 
 
