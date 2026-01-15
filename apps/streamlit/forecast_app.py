@@ -48,6 +48,18 @@ def _model_color(model_name: str) -> str:
     return FALLBACK_MODEL_COLORS[idx]
 
 
+def _format_resample_minutes(label: str) -> str:
+    if label.endswith("min"):
+        return label
+    if label.endswith("h"):
+        hours = int(label.replace("h", ""))
+        return f"{hours * 60}min"
+    if label.endswith("d"):
+        days = int(label.replace("d", ""))
+        return f"{days * 1440}min"
+    return label
+
+
 @st.cache_data(ttl=CACHE_TIMEOUT, persist="disk", show_spinner=True)
 def cached_list_items(limit: int = 30000):
     return list_items(limit=limit)
@@ -619,12 +631,10 @@ def render_forecast_tab() -> None:
     st.subheader("Forecast")
 
     items = cached_list_items()
-    default_ids = {"19976"}
-    default_items = [item for item in items if str(item.get("item_id")) in default_ids]
     selected_items = st.multiselect(
         "Search for items",
         options=items,
-        default=default_items,
+        default=[],
         format_func=lambda x: f"[{x['item_id']}] {x['item_name']}",
         help="Type to search and select one or more items",
     )
@@ -792,11 +802,12 @@ def render_forecast_tab() -> None:
                 cols = st.columns(len(resample_items))
                 for col, (resample_label, resample_results) in zip(cols, resample_items):
                     with col:
-                        st.subheader(f"Resample: {resample_label}")
+                        minutes_label = _format_resample_minutes(resample_label)
+                        st.subheader(f"Resample: {resample_label} ({minutes_label})")
                         for column, result in resample_results.items():
                             if column not in selected_columns:
                                 continue
-                            st.markdown(f"#### {column}")
+                            st.markdown(f"#### {column} ({minutes_label})")
                             context = result.get("context") or {}
                             count = len(context.get("timestamps", []))
                             st.caption(f"Loaded {count} data points for {column}.")

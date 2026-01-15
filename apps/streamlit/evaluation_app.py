@@ -27,10 +27,43 @@ RESAMPLE_OPTIONS = ["5min", "15min", "30min", "1h", "4h", "12h", "1d"]
 
 CACHE_TIMEOUT = 60 * 60 * 24 * 7  # 7 days
 
+MODEL_COLOR_MAP = {
+    "ARIMA": "#ff7f0e",
+    "ExponentialSmoothing": "#2ca02c",
+    "XGBoost": "#d62728",
+    "Chronos2": "#9467bd",
+    "Chronos": "#9467bd",
+}
+FALLBACK_MODEL_COLORS = ["#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+
 
 @st.cache_data(ttl=CACHE_TIMEOUT, persist="disk", show_spinner=True)
 def cached_list_items(limit: int = 30000):
     return list_items(limit=limit)
+
+
+def _model_color(model_name: str) -> str:
+    if model_name in MODEL_COLOR_MAP:
+        return MODEL_COLOR_MAP[model_name]
+    if "Chronos" in model_name:
+        return MODEL_COLOR_MAP["Chronos"]
+    import hashlib
+
+    digest = hashlib.md5(model_name.encode("utf-8")).hexdigest()
+    idx = int(digest, 16) % len(FALLBACK_MODEL_COLORS)
+    return FALLBACK_MODEL_COLORS[idx]
+
+
+def _format_resample_minutes(label: str) -> str:
+    if label.endswith("min"):
+        return label
+    if label.endswith("h"):
+        hours = int(label.replace("h", ""))
+        return f"{hours * 60}min"
+    if label.endswith("d"):
+        days = int(label.replace("d", ""))
+        return f"{days * 1440}min"
+    return label
 
 
 def _validate_eval_inputs(
@@ -120,9 +153,10 @@ def _render_evaluation_result(
     item_id: int,
     metrics: List[str],
     *,
-    heading: str,
+    heading: str | None = None,
 ) -> None:
-    st.markdown(f"#### {heading}")
+    if heading:
+        st.markdown(f"#### {heading}")
 
     models_payload = result.get("models", [])
     missing_models = result.get("missing_models", [])
@@ -159,12 +193,15 @@ def _render_evaluation_result(
             future_rows.append({"timestamp": ts, "value": val, "model": m.get("model_name")})
     if future_rows:
         df_future = pd.DataFrame(future_rows)
+        models_unique = df_future["model"].unique().tolist()
+        color_map = {m: _model_color(m) for m in models_unique}
         fig_future = px.line(
             df_future,
             x="timestamp",
             y="value",
             color="model",
             title=f"Future forecasts for item {item_id}",
+            color_discrete_map=color_map,
         )
         st.plotly_chart(fig_future, use_container_width=True)
 
@@ -184,12 +221,15 @@ def _render_evaluation_result(
             hist_rows.append({"timestamp": ts, "forecast": val, "model": m.get("model_name")})
     if hist_rows:
         df_hist_fc = pd.DataFrame(hist_rows)
+        models_unique = df_hist_fc["model"].unique().tolist()
+        color_map = {m: _model_color(m) for m in models_unique}
         fig_h = px.line(
             df_hist_fc,
             x="timestamp",
             y="forecast",
             color="model",
             title="Historical backtest (forecasts)",
+            color_discrete_map=color_map,
         )
         if actual_rows:
             df_act = pd.DataFrame(actual_rows)
@@ -292,12 +332,10 @@ def render_evaluation_tab() -> None:
 
     st.subheader("Evaluation")
     items = cached_list_items()
-    default_ids = {"19976"}
-    default_items = [item for item in items if str(item.get("item_id")) in default_ids]
     selected_items = st.multiselect(
         "Search for items",
         options=items,
-        default=default_items,
+        default=[],
         format_func=lambda x: f"[{x['item_id']}] {x['item_name']}",
         help="Type to search and select one or more items",
     )
@@ -381,14 +419,15 @@ def render_evaluation_tab() -> None:
                         cols = st.columns(len(item_results))
                         for col, (label, per_field) in zip(cols, item_results.items()):
                             with col:
-                                st.subheader(f"Resample: {label}")
+                                minutes_label = _format_resample_minutes(label)
+                                st.subheader(f"Resample: {label} ({minutes_label})")
                                 for value_column, result in per_field.items():
-                                    st.markdown(f"#### {value_column}")
+                                    st.markdown(f"#### {value_column} ({minutes_label})")
                                     _render_evaluation_result(
                                         result,
                                         item_id,
                                         metrics,
-                                        heading=value_column,
+                                        heading=None,
                                     )
 
         except Exception as exc:  # pragma: no cover
