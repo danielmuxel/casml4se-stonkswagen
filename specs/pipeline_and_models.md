@@ -391,7 +391,7 @@ def create_pipeline(
         
     Example:
         >>> pipeline = create_pipeline("ARIMA", "my_experiment", {"p": 2, "d": 1})
-        >>> results = pipeline.run(item_id=19697)
+        >>> results = pipeline.run(item_id=19976)
     """
     from ..pipeline import StandardPipeline, PipelineConfig
     
@@ -838,7 +838,7 @@ pipeline = StandardPipeline(model, experiment_name="arima_copper_ore")
 
 # Ausführen mit Backtesting
 results = pipeline.run(
-    item_id=19697,      # Copper Ore
+    item_id=19976,      # Mystic Coin
     days_back=30,
     mode="backtest"
 )
@@ -858,7 +858,7 @@ pipeline = create_pipeline(
     model_params={"trend": "add", "damped": True}
 )
 
-results = pipeline.run(item_id=19697, days_back=14)
+results = pipeline.run(item_id=19976, days_back=14)
 ```
 
 ### 5.3 Backtest-Konfiguration anpassen
@@ -874,7 +874,7 @@ config = BacktestConfig(
 )
 
 results = pipeline.run(
-    item_id=19697,
+    item_id=19976,
     mode="backtest",
     backtest_config=config
 )
@@ -932,13 +932,13 @@ print(ModelRegistry.list_models())  # ['ARIMA', 'ExponentialSmoothing', 'Prophet
 
 ```
 Experiment: "arima_copper_ore"
-├── Run: ARIMA_item_19697
+├── Run: ARIMA_item_19976
 │   ├── Parameters
 │   │   ├── model_name: "ARIMA"
 │   │   ├── p: 2
 │   │   ├── d: 1
 │   │   ├── q: 2
-│   │   ├── item_id: 19697
+│   │   ├── item_id: 19976
 │   │   └── ...
 │   ├── Metrics
 │   │   ├── mape: 2.13
@@ -987,11 +987,10 @@ Experiment: "arima_copper_ore"
 
 | Item | ID |
 |------|-----|
-| Copper Ore | 19697 |
+| Mystic Coin | 19976 |
 | Iron Ore | 19699 |
 | Mithril Ore | 19700 |
 | Glob of Ectoplasm | 19721 |
-| Mystic Coin | 19976 |
 
 ### 9.2 Zeitintervalle
 
@@ -999,4 +998,3 @@ Experiment: "arima_copper_ore"
 - 1 Tag = 288 Datenpunkte
 - 1 Woche = 2016 Datenpunkte
 - 1 Monat ≈ 8640 Datenpunkte
-

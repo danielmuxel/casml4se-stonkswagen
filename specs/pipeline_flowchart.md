@@ -361,7 +361,7 @@ flowchart TD
     
     subgraph MLFLOW_SERVER["☁️ MLflow Server"]
         ML1["Experiment: 'arima_copper_ore'"]
-        ML2["Run: 'ARIMA_item_19697'"]
+        ML2["Run: 'ARIMA_item_19976'"]
         ML3["Stored Data"]
     end
     
@@ -406,12 +406,12 @@ sequenceDiagram
     Factory->>Pipeline: StandardPipeline(model, "exp")
     Pipeline-->>User: pipeline
     
-    User->>Pipeline: run(item_id=19697, mode="backtest")
+    User->>Pipeline: run(item_id=19976, mode="backtest")
     
     Pipeline->>MLflow: set_experiment("exp")
     Pipeline->>MLflow: start_run()
     
-    Pipeline->>DB: get_item_prices(19697, 30)
+    Pipeline->>DB: get_item_prices(19976, 30)
     DB-->>Pipeline: DataFrame
     
     Pipeline->>Darts: TimeSeries.from_dataframe()
