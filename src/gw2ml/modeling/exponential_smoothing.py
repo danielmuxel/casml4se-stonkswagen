@@ -20,7 +20,7 @@ _SEASONAL_MAP = {None: SeasonalityMode.NONE, "add": SeasonalityMode.ADDITIVE, "m
 class ExponentialSmoothingModel(BaseModel):
     """
     Exponential Smoothing (Holt-Winters) Model.
-    
+
     Args:
         trend: None, "add", or "mul"
         damped: Use damped trend
@@ -35,6 +35,10 @@ class ExponentialSmoothingModel(BaseModel):
     @property
     def default_params(self) -> Dict[str, Any]:
         return {"trend": None, "damped": False, "seasonal": None, "seasonal_periods": None}
+
+    @property
+    def supports_rolling_forecast(self) -> bool:
+        return True
 
     def __init__(
         self,
@@ -75,6 +79,7 @@ class ExponentialSmoothingModel(BaseModel):
     def fit(self, series: TimeSeries, **kwargs: Any) -> "ExponentialSmoothingModel":
         self._model = self.build_model()
         self._model.fit(series)
+        self._last_fitted_series = series
         return self
 
     def predict(self, n: int, **kwargs: Any) -> TimeSeries:

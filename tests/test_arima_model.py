@@ -197,6 +197,58 @@ class TestARIMAModelPredict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# TEST: ROLLING FORECAST
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestARIMAModelRollingForecast:
+    """Tests for rolling window forecasting."""
+
+    def test_supports_rolling_forecast_is_true(self) -> None:
+        """ARIMA model supports rolling forecast."""
+        model = ARIMAModel()
+        assert model.supports_rolling_forecast is True
+
+    def test_predict_rolling_returns_timeseries(self) -> None:
+        """predict_rolling() returns a TimeSeries."""
+        series = _create_mock_series(days=10)
+        model = ARIMAModel(p=1, d=1, q=1)
+        model.fit(series)
+
+        forecast = model.predict_rolling(n=3)
+        assert isinstance(forecast, TimeSeries)
+
+    def test_predict_rolling_correct_length(self) -> None:
+        """predict_rolling() returns the correct number of steps."""
+        series = _create_mock_series(days=10)
+        model = ARIMAModel(p=1, d=1, q=1)
+        model.fit(series)
+
+        forecast = model.predict_rolling(n=5)
+        assert len(forecast) == 5
+
+    def test_predict_rolling_without_fit_raises(self) -> None:
+        """predict_rolling() raises error if not fitted."""
+        model = ARIMAModel()
+
+        with pytest.raises(ValueError, match="fitted"):
+            model.predict_rolling(n=3)
+
+    def test_predict_rolling_timestamps_continue(self) -> None:
+        """predict_rolling() timestamps continue from the series."""
+        series = _create_mock_series(days=10)
+        model = ARIMAModel(p=1, d=1, q=1)
+        model.fit(series)
+
+        forecast = model.predict_rolling(n=3)
+        last_series_ts = series.time_index[-1]
+        first_forecast_ts = forecast.time_index[0]
+
+        # First forecast timestamp should be after the last series timestamp
+        assert first_forecast_ts > last_series_ts
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # TEST: HISTORICAL FORECASTS
 # ══════════════════════════════════════════════════════════════════════════════
 

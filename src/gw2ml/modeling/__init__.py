@@ -27,6 +27,7 @@ Example:
 
 from .base import BaseModel
 from .arima import ARIMAModel
+from .artifacts import load_model, persist_model
 from .exponential_smoothing import ExponentialSmoothingModel
 from .chronos import Chronos2
 from .registry import get_default_grid, get_model, list_models, register_model
@@ -94,5 +95,6 @@ __all__ = [
     "get_model",
     "get_default_grid",
     "list_models",
+    "persist_model",
+    "load_model",
 ]
-

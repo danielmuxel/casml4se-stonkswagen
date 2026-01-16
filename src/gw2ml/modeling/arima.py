@@ -13,7 +13,7 @@ from .base import BaseModel
 class ARIMAModel(BaseModel):
     """
     ARIMA (AutoRegressive Integrated Moving Average) Model.
-    
+
     Args:
         p: AR order (autoregressive terms)
         d: Differencing order
@@ -28,6 +28,10 @@ class ARIMAModel(BaseModel):
     @property
     def default_params(self) -> Dict[str, Any]:
         return {"p": 1, "d": 1, "q": 1, "seasonal_order": None}
+
+    @property
+    def supports_rolling_forecast(self) -> bool:
+        return True
 
     def __init__(
         self,
@@ -63,6 +67,7 @@ class ARIMAModel(BaseModel):
     def fit(self, series: TimeSeries, **kwargs: Any) -> "ARIMAModel":
         self._model = self.build_model()
         self._model.fit(series)
+        self._last_fitted_series = series
         return self
 
     def predict(self, n: int, **kwargs: Any) -> TimeSeries:

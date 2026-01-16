@@ -253,7 +253,14 @@ def forecast_item(
             last_ts = series_meta.series.time_index[-1]
 
             logger.debug(f"    Generating {horizon}-step future forecast...")
-            forecast = model_obj.predict(n=horizon)
+            # Use rolling forecast for models that support it (ARIMA, ExponentialSmoothing)
+            # This predicts 1 step at a time, refitting after each step
+            use_rolling = getattr(model_obj, "supports_rolling_forecast", False)
+            if use_rolling:
+                logger.info(f"    Using rolling window forecast for {model_name} ({horizon} steps)")
+                forecast = model_obj.predict_rolling(n=horizon)
+            else:
+                forecast = model_obj.predict(n=horizon)
         except Exception as exc:
             exc_msg = str(exc)
             if "MPS" in exc_msg or "mps" in exc_msg or "float32" in exc_msg or "dtype" in exc_msg:

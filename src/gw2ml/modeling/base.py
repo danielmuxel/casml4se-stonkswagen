@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Union
+from typing import Any, Dict, List, Union
 
+import numpy as np
+import pandas as pd
 from darts import TimeSeries
+
+logger = logging.getLogger(__name__)
 
 
 class BaseModel(ABC):
     """Abstract Base Class for all forecasting models."""
+
+    _last_fitted_series: TimeSeries | None = None
 
     @property
     @abstractmethod
@@ -26,6 +33,15 @@ class BaseModel(ABC):
         """Whether the model supports external covariates."""
         return False
 
+    @property
+    def supports_rolling_forecast(self) -> bool:
+        """Whether the model supports rolling window forecasting.
+
+        Override to True in models that should use predict_rolling() instead of predict()
+        for multi-step forecasts (e.g., ARIMA, ExponentialSmoothing).
+        """
+        return False
+
     @abstractmethod
     def build_model(self, **kwargs: Any) -> Any:
         """Create the internal Darts model."""
@@ -37,6 +53,60 @@ class BaseModel(ABC):
     @abstractmethod
     def predict(self, n: int, **kwargs: Any) -> TimeSeries:
         """Generate forecast for n steps."""
+
+    def predict_rolling(self, n: int, **kwargs: Any) -> TimeSeries:
+        """Generate n-step forecast using rolling window approach.
+
+        Forecasts 1 step at a time, appends the prediction to the series,
+        refits the model on the extended series, and repeats.
+
+        This mimics backtest behavior and can produce more realistic multi-step
+        forecasts for local statistical models like ARIMA and ExponentialSmoothing.
+
+        Args:
+            n: Number of steps to forecast
+            **kwargs: Additional arguments passed to predict()
+
+        Returns:
+            TimeSeries containing all n rolling forecasts
+        """
+        if self._last_fitted_series is None:
+            raise ValueError(
+                "Model must be fitted first with fit(). "
+                "Rolling forecast requires the last fitted series."
+            )
+
+        current_series = self._last_fitted_series
+        predictions: List[float] = []
+        time_indices: List[pd.Timestamp] = []
+
+        logger.debug(f"Starting rolling forecast for {n} steps")
+
+        for step in range(n):
+            try:
+                # Predict 1 step ahead
+                pred = self.predict(n=1, **kwargs)
+                pred_value = float(pred.values(copy=False)[0, 0])
+                predictions.append(pred_value)
+                time_indices.append(pred.time_index[0])
+
+                # Extend series with predicted value
+                current_series = current_series.append(pred)
+
+                # Refit model on extended series
+                self.fit(current_series)
+
+            except Exception as exc:
+                logger.error(f"Rolling forecast failed at step {step + 1}/{n}: {exc}")
+                raise
+
+        logger.debug(f"Rolling forecast complete: {len(predictions)} predictions")
+
+        # Reconstruct TimeSeries from predictions using explicit DatetimeIndex
+        return TimeSeries.from_times_and_values(
+            times=pd.DatetimeIndex(time_indices),
+            values=np.array(predictions).reshape(-1, 1),
+        )
 
     def get_params(self) -> Dict[str, Any]:
         """Get current model parameters."""
