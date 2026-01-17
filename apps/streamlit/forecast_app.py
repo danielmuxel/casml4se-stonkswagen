@@ -634,6 +634,10 @@ def render_forecast_tab(
             help="If enabled, retraining will run a full grid search instead of reusing cached params.",
         )
 
+        if st.button("Clear Cache", width="stretch"):
+            st.cache_data.clear()
+            st.success("Cache cleared!")
+
     if show_header:
         st.subheader("Forecast")
 

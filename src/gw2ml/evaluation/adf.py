@@ -9,18 +9,29 @@ from statsmodels.tsa.stattools import adfuller
 def perform_adf_test(series: pd.Series) -> dict:
     """
     Perform the Augmented Dickey-Fuller test on a pandas Series.
-    
+
     Returns a dictionary with the results.
     """
     # Remove NaN values as they can break the test
     series = series.dropna()
-    
+
     if len(series) < 20:
         return {
             "error": "Series too short for reliable ADF test (min 20 samples required)."
         }
 
-    result = adfuller(series)
+    # Check for constant series (no variance)
+    if series.nunique(dropna=True) <= 1 or series.std() == 0:
+        return {
+            "error": "Series is constant (no variance). ADF test requires varying data."
+        }
+
+    try:
+        result = adfuller(series)
+    except ValueError as exc:
+        return {
+            "error": f"ADF test failed: {exc}"
+        }
     
     return {
         "adf_statistic": result[0],

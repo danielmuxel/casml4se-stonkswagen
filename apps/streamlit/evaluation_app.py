@@ -362,6 +362,10 @@ def render_evaluation_tab(
             help="If enabled, retraining will run a full grid search instead of reusing cached params.",
         )
 
+        if st.button("Clear Cache", width="stretch"):
+            st.cache_data.clear()
+            st.success("Cache cleared!")
+
     if show_header:
         st.subheader("Evaluation")
     if selected_items is None:

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -156,8 +154,8 @@ def _plot_dendrogram(
 
     # Convert to plotly
     fig = go.Figure()
-    for i, (x_coords, y_coords, color) in enumerate(
-        zip(dend["icoord"], dend["dcoord"], dend["color_list"])
+    for x_coords, y_coords, color in zip(
+        dend["icoord"], dend["dcoord"], dend["color_list"]
     ):
         try:
             line_color = mcolors.to_hex(color)
@@ -377,6 +375,10 @@ def render_item_finder_tab(
             value=100,
             help="Limit items for similarity/profitability analysis.",
         )
+
+        if st.button("Clear Cache", width="stretch"):
+            st.cache_data.clear()
+            st.success("Cache cleared!")
 
     if show_header:
         st.subheader("Item Finder")

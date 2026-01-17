@@ -40,7 +40,12 @@ def available_history_columns(limit: int = 30):
 @st.cache_data(ttl=CACHE_TIMEOUT, show_spinner=False)
 def cached_perform_adf_test(series: pd.Series) -> dict:
     """Cache the ADF test results to prevent re-calculation on UI changes."""
-    return perform_adf_test(series)
+    try:
+        return perform_adf_test(series)
+    except Exception as exc:
+        return {
+            "error": f"ADF test failed: {exc}"
+        }
 
 @st.cache_data(ttl=CACHE_TIMEOUT, persist="disk", show_spinner=True,show_time=True)
 def cached_load_gw2_series_batch(item_ids, days_back, value_column):
@@ -685,6 +690,9 @@ def render_adf_analysis(selected_items: list[dict], days_back: int, metrics: lis
             all_results.append(row)
             # Update the table in real-time
             results_table.table(pd.DataFrame(all_results))
+        
+        if not all_results:
+            st.info("No ADF results available for this metric.")
 
     with st.expander("About Augmented Dickey-Fuller Test"):
         st.write("""
