@@ -9,9 +9,6 @@ _STYLE_STATE_KEY = "_app_header_styles_injected"
 
 
 def _inject_header_styles() -> None:
-    if st.session_state.get(_STYLE_STATE_KEY):
-        return
-
     st.markdown(
         """
 <style>
@@ -25,7 +22,7 @@ def _inject_header_styles() -> None:
   margin: 0;
 }
 .app-header .app-page {
-  font-size: 1.6rem;
+  font-size: 2.1rem;
   font-weight: 700;
   line-height: 1.2;
   margin: 0.15rem 0 0 0;
@@ -34,7 +31,6 @@ def _inject_header_styles() -> None:
         """,
         unsafe_allow_html=True,
     )
-    st.session_state[_STYLE_STATE_KEY] = True
 
 
 def render_page_header(page_title: str) -> None:

@@ -209,7 +209,7 @@ def _render_evaluation_result(
             fig_future.update_layout(
                 legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5)
             )
-        st.plotly_chart(fig_future, use_container_width=True)
+        st.plotly_chart(fig_future, width="stretch")
 
     hist_rows = []
     actual_rows = None
@@ -249,7 +249,7 @@ def _render_evaluation_result(
             fig_h.update_layout(
                 legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5)
             )
-        st.plotly_chart(fig_h, use_container_width=True)
+        st.plotly_chart(fig_h, width="stretch")
 
     if models_payload:
         metrics_data = []
@@ -304,11 +304,16 @@ def _render_evaluation_result(
                 ]
 
             styled_df = df_metrics.style.apply(highlight_min)
-            st.dataframe(styled_df, use_container_width=True, hide_index=True)
+            st.dataframe(styled_df, width="stretch", hide_index=True)
 
 
-def render_evaluation_tab() -> None:
-    render_page_header("GW2ML: Evaluation & Backtest")
+def render_evaluation_tab(
+    selected_items: list[dict] | None = None,
+    *,
+    show_header: bool = True,
+) -> None:
+    if show_header:
+        render_page_header("GW2ML: Evaluation & Backtest")
 
     with st.sidebar:
         st.header("Evaluation Configuration")
@@ -357,15 +362,25 @@ def render_evaluation_tab() -> None:
             help="If enabled, retraining will run a full grid search instead of reusing cached params.",
         )
 
-    st.subheader("Evaluation")
-    items = cached_list_items()
-    selected_items = st.multiselect(
-        "Search for items",
-        options=items,
-        default=[],
-        format_func=lambda x: f"[{x['item_id']}] {x['item_name']}",
-        help="Type to search and select one or more items",
-    )
+    if show_header:
+        st.subheader("Evaluation")
+    if selected_items is None:
+        items = cached_list_items()
+        default_items = []
+        stored_ids = st.session_state.get("selected_item_ids", [])
+        if stored_ids and "global_item_select" not in st.session_state:
+            default_items = [item for item in items if str(item.get("item_id")) in stored_ids]
+        selected_items = st.multiselect(
+            "Search for items",
+            options=items,
+            default=default_items,
+            format_func=lambda x: f"[{x['item_id']}] {x['item_name']}",
+            help="Type to search and select one or more items",
+        )
+        st.session_state["selected_item_ids"] = [str(item["item_id"]) for item in selected_items]
+    elif not selected_items:
+        st.info("Select one or more items above to run evaluation.")
+        return
     if st.button("Run evaluation"):
         start_time = time.time()
         try:

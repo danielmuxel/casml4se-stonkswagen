@@ -574,8 +574,13 @@ def _build_profitability_summary(
     return fig
 
 
-def render_forecast_tab() -> None:
-    render_page_header("GW2ML: Forecast")
+def render_forecast_tab(
+    selected_items: list[dict] | None = None,
+    *,
+    show_header: bool = True,
+) -> None:
+    if show_header:
+        render_page_header("GW2ML: Forecast")
 
     with st.sidebar:
         st.header("Forecast Configuration")
@@ -629,16 +634,26 @@ def render_forecast_tab() -> None:
             help="If enabled, retraining will run a full grid search instead of reusing cached params.",
         )
 
-    st.subheader("Forecast")
+    if show_header:
+        st.subheader("Forecast")
 
-    items = cached_list_items()
-    selected_items = st.multiselect(
-        "Search for items",
-        options=items,
-        default=[],
-        format_func=lambda x: f"[{x['item_id']}] {x['item_name']}",
-        help="Type to search and select one or more items",
-    )
+    if selected_items is None:
+        items = cached_list_items()
+        default_items = []
+        stored_ids = st.session_state.get("selected_item_ids", [])
+        if stored_ids and "global_item_select" not in st.session_state:
+            default_items = [item for item in items if str(item.get("item_id")) in stored_ids]
+        selected_items = st.multiselect(
+            "Search for items",
+            options=items,
+            default=default_items,
+            format_func=lambda x: f"[{x['item_id']}] {x['item_name']}",
+            help="Type to search and select one or more items",
+        )
+        st.session_state["selected_item_ids"] = [str(item["item_id"]) for item in selected_items]
+    elif not selected_items:
+        st.info("Select one or more items above to run forecasts.")
+        return
 
     if st.button("Run forecast"):
         start_time = time.time()
@@ -823,7 +838,7 @@ def render_forecast_tab() -> None:
                                 actual_points=int(actual_points),
                                 actual_override=override_ctx,
                             )
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, width="stretch")
 
                         buy_result = resample_results.get("buy_unit_price")
                         sell_result = resample_results.get("sell_unit_price")
@@ -881,10 +896,10 @@ def render_forecast_tab() -> None:
                                     ),
                                 )
                                 if fig_summary is not None:
-                                    st.plotly_chart(fig_summary, use_container_width=True)
+                                    st.plotly_chart(fig_summary, width="stretch")
                                 fig_sell, fig_buy = figs
-                                st.plotly_chart(fig_sell, use_container_width=True)
-                                st.plotly_chart(fig_buy, use_container_width=True)
+                                st.plotly_chart(fig_sell, width="stretch")
+                                st.plotly_chart(fig_buy, width="stretch")
                             else:
                                 st.info(
                                     "Profitability indicator requires matching buy/sell forecasts for the selected model."
