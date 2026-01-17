@@ -117,8 +117,10 @@ def _build_override_config(
     resample_freq: str | None,
     force_grid_search: bool,
 ) -> Dict[str, Any]:
-    test_days = DEFAULT_CONFIG["split"]["test_days"]
+    default_test_days = DEFAULT_CONFIG["split"]["test_days"] or 0
     val_days = DEFAULT_CONFIG["split"]["val_days"] or 0
+    ratio_test_days = max(1, int(days_back * 0.2))
+    test_days = ratio_test_days if not default_test_days else min(default_test_days, ratio_test_days)
     min_days_for_fixed_split = test_days + val_days + 3
 
     if days_back >= min_days_for_fixed_split:
@@ -128,8 +130,8 @@ def _build_override_config(
         }
     else:
         split_config = {
-            "train": 0.6,
-            "val": 0.2,
+            "train": 0.8,
+            "val": None,
             "test_days": None,
             "val_days": None,
         }
