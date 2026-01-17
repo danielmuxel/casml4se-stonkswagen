@@ -41,7 +41,7 @@ ITEM_TYPES = [
     "UpgradeComponent",
     "Weapon",
 ]
-RESAMPLE_OPTIONS = ["Raw (no resample)", "5min", "15min", "30min", "1h", "4h", "12h", "1d"]
+RESAMPLE_OPTIONS = ["5min", "15min", "30min", "1h", "4h", "12h", "1d"]
 DENDROGRAM_SCALE_OPTIONS = [
     "Raw distance",
     "Distance x100",
@@ -88,7 +88,7 @@ def _load_price_data_parallel(
             df["fetched_at"] = pd.to_datetime(df["fetched_at"], format="ISO8601")
             df = df.set_index("fetched_at")
             price_series = df["sell_unit_price"].sort_index()
-            if resample_freq == "Raw (no resample)":
+            if resample_freq == "5min":
                 return item_id, price_series
             hourly_avg = price_series.resample(resample_freq).mean()
             return item_id, hourly_avg
@@ -118,7 +118,11 @@ def _compute_similarity_matrix(
         series_df = filled
     price_matrix = series_df.T.values
     similarity_matrix = cosine_similarity(price_matrix)
+    # Clip similarity to [0, 1] to avoid floating-point precision issues
+    similarity_matrix = np.clip(similarity_matrix, 0, 1)
     distance_matrix = 1 - similarity_matrix
+    # Ensure no negative distances due to floating-point errors
+    distance_matrix = np.clip(distance_matrix, 0, None)
     np.fill_diagonal(distance_matrix, 0)
     return similarity_matrix, distance_matrix
 
@@ -330,8 +334,8 @@ def render_item_finder_tab(
         resample_freq = st.selectbox(
             "Resample Frequency",
             options=RESAMPLE_OPTIONS,
-            index=0,  # default to "Raw (no resample)"
-            help="Resample interval for price data.",
+            index=0,  # default to "5min" (raw)
+            help="Resample interval for price data (5min is raw for this dataset).",
         )
 
         similarity_input = st.selectbox(
