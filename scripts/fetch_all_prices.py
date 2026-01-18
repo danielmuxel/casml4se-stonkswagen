@@ -14,6 +14,8 @@ Usage:
 """
 
 import argparse
+import logging
+import sys
 from datetime import datetime
 
 from dotenv import load_dotenv
@@ -22,6 +24,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from gw2ml.data.retriever import DataRetriever
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+    ],
+)
+logger = logging.getLogger(__name__)
 
 
 def main() -> None:
@@ -64,51 +77,66 @@ def main() -> None:
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=200,
-        help="Items per query batch (default: 200). Higher = fewer queries but more memory",
+        default=1,
+        help="Items per query batch (default: 1). Higher = fewer queries but more memory",
     )
     parser.add_argument(
         "--delay",
         type=float,
-        default=0.1,
-        help="Delay in seconds between batches (default: 0.1). Higher = gentler on DB",
+        default=0.05,
+        help="Delay in seconds between batches (default: 0.05). Higher = gentler on DB",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable verbose/debug logging",
     )
 
     args = parser.parse_args()
 
-    # Create retriever
+    # Set log level based on verbosity
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.debug("Verbose logging enabled")
+
+    logger.info("Initializing DataRetriever...")
     retriever = DataRetriever()
+    logger.info("DataRetriever initialized successfully")
 
     # Handle --export-tradable-items separately
     if args.export_tradable_items:
-        print("=" * 60)
-        print("Exporting tradable items list...")
-        print("=" * 60)
+        logger.info("=" * 60)
+        logger.info("Exporting tradable items list...")
+        logger.info("=" * 60)
         df = retriever.get_tradable_items(save_csv=True)
-        print(f"Exported {len(df)} tradable items")
+        logger.info(f"Exported {len(df)} tradable items")
         return
 
     # Parse dates
     start_time = None
     if args.start_date:
         start_time = datetime.strptime(args.start_date, "%Y-%m-%d")
+        logger.info(f"Parsed start date: {start_time}")
 
     end_time = datetime.now()
     if args.end_date:
         end_time = datetime.strptime(args.end_date, "%Y-%m-%d")
+    logger.info(f"Using end time: {end_time}")
 
-    print("=" * 60)
-    print("GW2 Price Data Fetcher")
-    print("=" * 60)
-    print(f"Workers:       {args.workers}")
-    print(f"Batch size:    {args.batch_size}")
-    print(f"Batch delay:   {args.delay}s")
-    print(f"Start time:    {start_time or 'No lower bound'}")
-    print(f"End time:      {end_time}")
-    print(f"Use cache:     {not args.no_cache}")
-    print(f"Tradable only: {args.tradable_only}")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("GW2 Price Data Fetcher")
+    logger.info("=" * 60)
+    logger.info(f"Workers:       {args.workers}")
+    logger.info(f"Batch size:    {args.batch_size}")
+    logger.info(f"Batch delay:   {args.delay}s")
+    logger.info(f"Start time:    {start_time or 'No lower bound'}")
+    logger.info(f"End time:      {end_time}")
+    logger.info(f"Use cache:     {not args.no_cache}")
+    logger.info(f"Tradable only: {args.tradable_only}")
+    logger.info("=" * 60)
 
+    logger.info("Starting parallel price fetch...")
     output_path = retriever.get_all_prices_parallel(
         end_time=end_time,
         start_time=start_time,
@@ -119,9 +147,11 @@ def main() -> None:
         batch_delay=args.delay,
     )
 
-    print(f"Output folder: {output_path}")
+    logger.info("=" * 60)
+    logger.info("Fetch completed!")
+    logger.info(f"Output folder: {output_path}")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":
     main()
-
