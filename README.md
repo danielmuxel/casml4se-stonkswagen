@@ -24,17 +24,12 @@ Workspace for exploring Guild Wars 2 trading data, training machine-learning mod
    DB_URL=postgresql://user:password@host:port/database
    ```
 
-3. **Backend starten** (in einem Terminal):
-   ```bash
-   uv run fastapi dev apps/api/main.py --host 0.0.0.0 --port 8000
-   ```
-
-4. **Frontend starten** (in einem ANDEREN Terminal):
+3. **Streamlit-App starten**:
    ```bash
    uv run streamlit run apps/streamlit/gw2_app.py
    ```
 
-> **Wichtig:** Backend und Frontend sind zwei separate Prozesse und müssen in verschiedenen Terminals gestartet werden. Das Backend läuft auf Port 8000, das Streamlit-Frontend öffnet automatisch einen Browser.
+> **Hinweis:** Die Streamlit-App ist eigenständig und führt die ML-Modelle direkt aus – kein separates Backend erforderlich. Der Browser öffnet sich automatisch.
 
 ## Folder Structure
 
@@ -261,16 +256,17 @@ Some integration tests hit live databases; ensure `DB_URL` (or equivalent env cr
 
 Run inside the repo root (uses `uv`):
 
-- API (dev hot-reload):  
+- **Streamlit UI** (empfohlen):
+  `uv run streamlit run apps/streamlit/gw2_app.py`
+  Die Streamlit-App ist eigenständig und führt ML-Modelle direkt aus.
+
+- API (optional, dev hot-reload):
   `uv run fastapi dev apps/api/main.py --host 0.0.0.0 --port 8000`
 
-- API (uvicorn):  
+- API (optional, uvicorn):
   `uv run uvicorn apps.api.main:app --host 0.0.0.0 --port 8000`
 
-- Streamlit UI:  
-  `uv run streamlit run apps/streamlit/forecast_app.py`
-
-These entry points wrap the existing `train_items` and `forecast_item` functions. Configuration exposed in the UI/API allows setting item_ids, days_back, value_column, horizon, models, and metrics; DB and S3 settings are intentionally excluded from the UI/API surface (the pipelines still rely on environment-based DB connection as before).
+Configuration exposed in the UI allows setting item_ids, days_back, value_column, horizon, models, and metrics; DB and S3 settings are intentionally excluded from the UI surface (the pipelines rely on environment-based DB connection).
 
 ## `initialize_all.sh`
 
